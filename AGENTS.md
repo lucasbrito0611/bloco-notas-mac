@@ -81,6 +81,7 @@ Use `minor` para recursos novos e `patch` para correções. A versão do `packag
 - **Não copie o ícone da Apple.** O ícone é um desenho próprio, porque o original é marca registrada.
 - **Aviso do SmartScreen.** O instalador não tem assinatura digital, então o Windows mostra "O Windows protegeu o computador" na primeira execução ("Mais informações" → "Executar assim mesmo"). Resolver isso exige um certificado pago.
 - **Notas vazias somem** ao trocar de nota, como no Mac. Isso é intencional (`selectNote` e `newNote` em `App.jsx`).
+- **Não deixe o electron-builder publicar sozinho** (`--publish always`). Ele envia os arquivos em paralelo, cada envio tenta criar a release e um deles quebra com "Unexpected end of JSON input". Por isso o workflow gera com `--publish never` e publica com `gh release create`.
 
 ## Convenções
 
@@ -88,4 +89,4 @@ Use `minor` para recursos novos e `patch` para correções. A versão do `packag
 - Cor de destaque amarela (`--accent`). Sempre defina cores como variáveis em `:root` e o equivalente no tema escuro.
 - Atalhos usam `Ctrl` (padrão do Windows), não `Cmd`.
 - Mantenha o README em primeira pessoa, como se fosse o Lucas falando.
-- **Não deixe o electron-builder publicar sozinho** (`--publish always`). Ele envia os arquivos em paralelo, cada envio tenta criar a release e um deles quebra com "Unexpected end of JSON input". Por isso o workflow gera com `--publish never` e publica com `gh release create`.
+- **Commits saem só no nome do Lucas.** Não adicione `Co-Authored-By: Claude` nem "Generated with Claude Code" em commits ou PRs.
