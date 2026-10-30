@@ -1,4 +1,5 @@
 const { app, BrowserWindow, ipcMain, nativeTheme } = require('electron')
+const { autoUpdater } = require('electron-updater')
 const path = require('node:path')
 const fs = require('node:fs')
 
@@ -28,7 +29,8 @@ function createWindow() {
     minWidth: 760,
     minHeight: 480,
     title: 'Notas',
-    icon: path.join(__dirname, '..', 'build', 'icon.ico'),
+    // Instalado, a janela usa o ícone do próprio Notas.exe; rodando pelo npm, aponta para o arquivo.
+    icon: app.isPackaged ? undefined : path.join(__dirname, '..', 'build', 'icon.ico'),
     backgroundMaterial: 'mica',
     backgroundColor: '#00000000',
     titleBarStyle: 'hidden',
@@ -58,5 +60,9 @@ ipcMain.handle('notes:save', (_e, data) => saveData(data))
 
 // Faz o Windows tratar o app como "Notas" na barra de tarefas, e não como Electron.
 app.setAppUserModelId('com.lucas.notas')
-app.whenReady().then(createWindow)
+app.whenReady().then(() => {
+  createWindow()
+  // Procura uma versão nova no GitHub Releases, baixa em segundo plano e instala ao fechar o app.
+  if (app.isPackaged) autoUpdater.checkForUpdatesAndNotify().catch(() => {})
+})
 app.on('window-all-closed', () => app.quit())

@@ -49,6 +49,12 @@ src/styles.css        → o visual
 build/icon.svg        → o ícone do app
 ```
 
+## Baixar
+
+Baixe o `Notas-Setup-x.x.x.exe` mais recente na página de **[Releases](https://github.com/lucasbrito0611/bloco-notas-mac/releases/latest)** e instale. Depois disso, o app se atualiza sozinho: quando sai uma versão nova, ele baixa em segundo plano e instala quando você fecha.
+
+> Na primeira vez, o Windows pode mostrar **"O Windows protegeu o computador"**. Isso acontece porque o instalador não tem assinatura digital paga. Clique em **Mais informações → Executar assim mesmo**.
+
 ## Rodando na sua máquina
 
 Você precisa do [Node.js](https://nodejs.org/) instalado.
@@ -76,13 +82,26 @@ npm run dev
 | `Ctrl+Shift+L` | Lista de verificação |
 | Duplo clique na pasta | Renomear |
 
+## Como eu lanço uma versão nova
+
+Cada versão vira um instalador automaticamente pelo GitHub Actions:
+
+```bash
+npm version patch
+```
+```bash
+git push --follow-tags
+```
+
+O GitHub gera o `.exe`, publica nos Releases, e quem já tem o app instalado recebe a atualização sozinho.
+
 ## Ícone
 
 O ícone fica em `build/icon.svg`. Depois de editar, rode `npm run icon` para gerar o `icon.ico` e o `icon.png`.
 
 ## Próximos passos
 
-- [ ] Instalador `.exe`
+- [x] Instalador `.exe` com atualização automática
 - [ ] Imagens e anexos nas notas
 - [ ] Tabelas
 - [ ] Lixeira ("Apagadas Recentemente")
