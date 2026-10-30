@@ -66,7 +66,7 @@ npm version patch          # 1.0.0 → 1.0.1, faz commit e cria a tag v1.0.1
 git push --follow-tags     # envia o commit e a tag
 ```
 
-Quando a tag `v*` chega no GitHub, o workflow `Release` roda numa máquina Windows, gera `Notas-Setup-<versão>.exe` e publica no GitHub Releases junto com o `latest.yml`.
+Quando a tag `v*` chega no GitHub, o workflow `Release` roda numa máquina Windows, gera `Notas-Setup-<versão>.exe` com o electron-builder (`--publish never`) e depois cria a release com o `gh`, anexando o `.exe`, o `.blockmap` e o `latest.yml`.
 
 Os apps já instalados leem o `latest.yml` ao abrir, baixam a versão nova em segundo plano e instalam quando o app é fechado (`autoUpdater.checkForUpdatesAndNotify()` em `main.cjs`, só quando `app.isPackaged`).
 
@@ -88,3 +88,4 @@ Use `minor` para recursos novos e `patch` para correções. A versão do `packag
 - Cor de destaque amarela (`--accent`). Sempre defina cores como variáveis em `:root` e o equivalente no tema escuro.
 - Atalhos usam `Ctrl` (padrão do Windows), não `Cmd`.
 - Mantenha o README em primeira pessoa, como se fosse o Lucas falando.
+- **Não deixe o electron-builder publicar sozinho** (`--publish always`). Ele envia os arquivos em paralelo, cada envio tenta criar a release e um deles quebra com "Unexpected end of JSON input". Por isso o workflow gera com `--publish never` e publica com `gh release create`.

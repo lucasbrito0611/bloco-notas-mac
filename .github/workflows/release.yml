@@ -24,7 +24,18 @@ jobs:
 
       - run: npm run build
 
-      - name: Gerar instalador e publicar
-        run: npx electron-builder --win --publish always
+      - name: Gerar instalador
+        run: npx electron-builder --win --publish never
+
+      # O latest.yml é o arquivo que o electron-updater lê nos apps instalados para achar a versão nova.
+      - name: Publicar no GitHub Releases
+        shell: bash
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "Notas $GITHUB_REF_NAME" \
+            --generate-notes \
+            release/Notas-Setup-*.exe \
+            release/Notas-Setup-*.exe.blockmap \
+            release/latest.yml
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
