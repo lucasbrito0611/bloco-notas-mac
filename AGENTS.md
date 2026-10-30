@@ -66,7 +66,9 @@ npm version patch          # 1.0.0 → 1.0.1, faz commit e cria a tag v1.0.1
 git push --follow-tags     # envia o commit e a tag
 ```
 
-Quando a tag `v*` chega no GitHub, o workflow `Release` roda numa máquina Windows, gera `Notas-Setup-<versão>.exe` com o electron-builder (`--publish never`) e depois usa o `gh` para criar a release (se ainda não existir) e anexar o `.exe`, o `.blockmap` e o `latest.yml`, repetindo até 5 vezes se a API do GitHub devolver erro 500. Se o job falhar mesmo assim, use "Re-run failed jobs" no Actions: ele continua de onde parou.
+Quando a tag `v*` chega no GitHub, o workflow `Release` roda numa máquina Windows, gera `Notas-Setup.exe` com o electron-builder (`--publish never`) e depois usa o `gh` para criar a release (se ainda não existir) e anexar o `.exe`, o `.blockmap` e o `latest.yml`, repetindo até 5 vezes se a API do GitHub devolver erro 500. Se o job falhar mesmo assim, use "Re-run failed jobs" no Actions: ele continua de onde parou.
+
+O instalador tem nome fixo, sem versão (`artifactName` em `package.json`), para que o link https://github.com/lucasbrito0611/bloco-notas-mac/releases/latest/download/Notas-Setup.exe sempre baixe a versão mais recente. Não coloque a versão de volta no nome. O texto de instruções no topo de cada release vem de `.github/release-notes.md`; as notas do que mudou são geradas automaticamente abaixo dele.
 
 Os apps já instalados leem o `latest.yml` ao abrir, baixam a versão nova em segundo plano e instalam quando o app é fechado (`autoUpdater.checkForUpdatesAndNotify()` em `main.cjs`, só quando `app.isPackaged`).
 

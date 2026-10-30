@@ -34,10 +34,12 @@ jobs:
         run: |
           retry() { for i in 1 2 3 4 5; do "$@" && return 0; echo "Falhou, tentando de novo ($i)..."; sleep $((i * 10)); done; return 1; }
           gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1 ||
-            retry gh release create "$GITHUB_REF_NAME" --title "Notas $GITHUB_REF_NAME" --generate-notes --verify-tag
+            retry gh release create "$GITHUB_REF_NAME" --title "Notas $GITHUB_REF_NAME" \
+              --notes-file .github/release-notes.md --generate-notes --verify-tag
+          # Nome fixo (sem versão) para o link releases/latest/download/Notas-Setup.exe sempre funcionar.
           retry gh release upload "$GITHUB_REF_NAME" --clobber \
-            release/Notas-Setup-*.exe \
-            release/Notas-Setup-*.exe.blockmap \
+            release/Notas-Setup.exe \
+            release/Notas-Setup.exe.blockmap \
             release/latest.yml
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

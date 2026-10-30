@@ -51,7 +51,9 @@ build/icon.svg        → o ícone do app
 
 ## Baixar
 
-Baixe o `Notas-Setup-x.x.x.exe` mais recente na página de **[Releases](https://github.com/lucasbrito0611/bloco-notas-mac/releases/latest)** e instale. Depois disso, o app se atualiza sozinho: quando sai uma versão nova, ele baixa em segundo plano e instala quando você fecha.
+**[⬇️ Baixar o Notas para Windows](https://github.com/lucasbrito0611/bloco-notas-mac/releases/latest/download/Notas-Setup.exe)**
+
+Esse link sempre baixa a versão mais recente. É só abrir o `Notas-Setup.exe` e instalar. Depois disso, o app se atualiza sozinho: quando sai uma versão nova, ele baixa em segundo plano e instala quando você fecha. As versões anteriores ficam na página de [Releases](https://github.com/lucasbrito0611/bloco-notas-mac/releases).
 
 > Na primeira vez, o Windows pode mostrar **"O Windows protegeu o computador"**. Isso acontece porque o instalador não tem assinatura digital paga. Clique em **Mais informações → Executar assim mesmo**.
 

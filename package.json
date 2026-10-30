@@ -54,7 +54,7 @@
       "icon": "build/icon.ico"
     },
     "nsis": {
-      "artifactName": "Notas-Setup-${version}.${ext}",
+      "artifactName": "Notas-Setup.${ext}",
       "oneClick": true,
       "perMachine": false,
       "shortcutName": "Notas"
