@@ -31,6 +31,7 @@ electron/preload.cjs      ponte segura (contextBridge) que expõe window.notesAp
 electron/attachments.cjs  nomes de arquivo e conversão notas://anexos/<arquivo> → caminho (sem Electron, testável)
 src/App.jsx               a interface: pastas, lista de notas, editor, menus e aviso de atualização
 src/notes.js              lógica pura das notas: título, prévia, nota vazia, datas, busca, grupos, pastas
+src/updates.js            estados do fluxo de atualização (modal, botão, download, instalação)
 src/editor/extensions.js  lista de extensões do TipTap, usada pelo app e pelos testes
 src/editor/attachment.js  nó "attachment" (cartão de PDF, planilha etc.)
 src/styles.css            visual, com tokens de cor em :root e tema escuro via prefers-color-scheme
@@ -44,7 +45,7 @@ build/make-icon.cjs       gera build/icon.ico e build/icon.png a partir do SVG
 
 A comunicação interface ↔ disco é feita por IPC: `window.notesApi.save(data)` → `ipcMain.handle('notes:save')`. É o equivalente local de um `fetch` para uma API.
 
-API exposta em `window.notesApi`: `load`, `save`, `saveAttachment({ name, type, bytes })`, `openAttachment(url)`, `version`, `installUpdate`, `onUpdate(callback)`.
+API exposta em `window.notesApi`: `load`, `save`, `saveAttachment({ name, type, bytes })`, `openAttachment(url)`, `version`, `getUpdate`, `downloadUpdate`, `installUpdate`, `onUpdate(callback)`.
 
 Coloque lógica nova que não dependa de React ou Electron em `src/notes.js` (ou em `electron/attachments.cjs`, se for do lado do disco) e escreva testes para ela.
 
@@ -85,7 +86,21 @@ Quando a tag `v*` chega no GitHub, o workflow `Release` primeiro roda o `test.ym
 
 O instalador tem nome fixo, sem versão (`artifactName` em `package.json`), para que o link https://github.com/lucasbrito0611/bloco-notas-mac/releases/latest/download/Notas-Setup.exe sempre baixe a versão mais recente. Não coloque a versão de volta no nome. O texto de instruções no topo de cada release vem de `.github/release-notes.md`; as notas do que mudou são geradas automaticamente abaixo dele.
 
-Os apps já instalados leem o `latest.yml` ao abrir e baixam a versão nova em segundo plano (`setupUpdates` em `main.cjs`, só quando `app.isPackaged`). Enquanto baixa, a barra lateral mostra "Baixando atualização… X%"; quando termina, mostra "Versão X pronta" com o botão **Reiniciar**. Se o usuário não clicar, a versão nova é instalada quando o app fechar. Até a v1.0.2 o app usava `checkForUpdatesAndNotify()`, que só mostra uma notificação do Windows, sem o aviso na barra lateral.
+### Atualização automática (no app instalado)
+
+O fluxo é o padrão dos apps de desktop (`setupUpdates` em `main.cjs`, só quando `app.isPackaged`; estados em `src/updates.js`, com testes):
+
+1. Ao abrir, e depois a cada 4 horas, o app lê o `latest.yml` da última release. Ele **só verifica**, sem baixar nada (`autoDownload = false`).
+2. Se houver versão nova, aparece um **modal** com "Atualizar" e "Agora não".
+3. **Agora não** → nada é baixado nem instalado (`autoInstallOnAppQuit = false`) e aparece um botão **Atualizar** fixo no topo da janela, até o usuário atualizar. Se sair uma versão ainda mais nova, o modal volta.
+4. **Atualizar** (no modal ou no botão) → baixa mostrando a porcentagem. Quando termina, a interface salva as notas na hora e chama `quitAndInstall(true, true)`: instala em silêncio e **reabre o app sozinho**.
+5. Erro no download → modal de erro com "Tentar de novo". Erro ao só verificar (ex.: sem internet) é ignorado.
+
+Como a verificação pode terminar antes de a interface abrir, o `main.cjs` guarda o último aviso e a interface o pede com `getUpdate()` ao carregar.
+
+Histórico: até a v1.0.2 o app usava `checkForUpdatesAndNotify()` (notificação do Windows e instalação ao fechar). A v1.1.0 baixava sozinha e mostrava "Reiniciar" na barra lateral. O fluxo com modal vale a partir da v1.2.0.
+
+**Como testar sem publicar e sem reinstalar o app do usuário:** gere o app empacotado fingindo ser uma versão antiga (`npx electron-builder --win --dir -c.extraMetadata.version=1.0.0`), crie `release/win-unpacked/resources/app-update.yml` com `owner`, `repo`, `provider: github` e um `updaterCacheDirName` próprio (o `--dir` não gera esse arquivo) e rode o `Notas.exe` com `NOTAS_DATA_DIR` apontando para uma pasta temporária. Para não instalar de verdade, troque o handler `update:install` no processo principal durante o teste.
 
 Use `minor` para recursos novos e `patch` para correções. A versão do `package.json` precisa bater com a tag, por isso use sempre `npm version` em vez de criar a tag na mão.
 

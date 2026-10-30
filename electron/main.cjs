@@ -98,13 +98,29 @@ function createWindow() {
 
 // ---------- atualização automática ----------
 
+// A interface pode abrir depois que a verificação terminou, então guardamos o último aviso
+// para ela pedir quando estiver pronta (update:get).
+let lastUpdateEvent = null
+
 function setupUpdates() {
-  const send = (status) => win?.webContents.send('update:status', status)
-  autoUpdater.on('download-progress', (p) => send({ state: 'downloading', percent: Math.round(p.percent) }))
-  autoUpdater.on('update-downloaded', (info) => send({ state: 'ready', version: info.version }))
-  // Procura uma versão nova no GitHub Releases e baixa em segundo plano.
-  // Se o usuário não clicar em "Reiniciar", ela é instalada quando o app fechar.
-  autoUpdater.checkForUpdates().catch(() => {})
+  // Só verifica; o download começa quando o usuário aceitar no modal.
+  autoUpdater.autoDownload = false
+  // Se o usuário recusou, nada é instalado escondido ao fechar o app.
+  autoUpdater.autoInstallOnAppQuit = false
+
+  const send = (event) => {
+    if (event.type === 'available') lastUpdateEvent = event
+    win?.webContents.send('update:status', event)
+  }
+  autoUpdater.on('update-available', (info) => send({ type: 'available', version: info.version }))
+  autoUpdater.on('download-progress', (p) => send({ type: 'progress', percent: p.percent }))
+  autoUpdater.on('update-downloaded', (info) => send({ type: 'downloaded', version: info.version }))
+  autoUpdater.on('error', (err) => send({ type: 'error', message: err?.message }))
+
+  const check = () => autoUpdater.checkForUpdates().catch(() => {})
+  check()
+  // Quem deixa o app aberto o dia todo também fica sabendo das versões novas.
+  setInterval(check, 4 * 60 * 60 * 1000)
 }
 
 ipcMain.handle('notes:load', () => loadData())
@@ -114,7 +130,10 @@ ipcMain.handle('attachments:open', (_e, url) => {
   const file = attachments.resolveAttachment(attachmentsDir(), url)
   if (file) return shell.openPath(file)
 })
-ipcMain.handle('update:install', () => autoUpdater.quitAndInstall())
+ipcMain.handle('update:get', () => lastUpdateEvent)
+ipcMain.handle('update:download', () => autoUpdater.downloadUpdate())
+// quitAndInstall(isSilent, isForceRunAfter): instala sem mostrar a tela do instalador e reabre o app sozinho.
+ipcMain.handle('update:install', () => autoUpdater.quitAndInstall(true, true))
 ipcMain.handle('app:version', () => app.getVersion())
 
 // Faz o Windows tratar o app como "Notas" na barra de tarefas, e não como Electron.

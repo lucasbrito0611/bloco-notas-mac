@@ -19,6 +19,8 @@ if (!window.notesApi) {
     },
     openAttachment: async (url) => window.open(url),
     version: async () => 'web',
+    getUpdate: async () => null,
+    downloadUpdate: async () => {},
     installUpdate: async () => {},
     onUpdate: () => () => {},
   }

@@ -6,6 +6,8 @@ contextBridge.exposeInMainWorld('notesApi', {
   saveAttachment: (file) => ipcRenderer.invoke('attachments:save', file),
   openAttachment: (url) => ipcRenderer.invoke('attachments:open', url),
   version: () => ipcRenderer.invoke('app:version'),
+  getUpdate: () => ipcRenderer.invoke('update:get'),
+  downloadUpdate: () => ipcRenderer.invoke('update:download'),
   installUpdate: () => ipcRenderer.invoke('update:install'),
   onUpdate: (callback) => {
     const listener = (_e, status) => callback(status)

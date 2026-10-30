@@ -1,6 +1,8 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { useEditor, EditorContent } from '@tiptap/react'
 import { buildExtensions, nodeForAttachment } from './editor/extensions.js'
+import { initialUpdate, updateReducer, showUpdateModal, showUpdateButton } from './updates.js'
+import appIcon from '../build/icon.png'
 import {
   ALL,
   DEFAULT_FOLDER,
@@ -224,13 +226,60 @@ function NoteEditor({ note, onChange, onTogglePin, editorRef }) {
 
 // ---------- atualização ----------
 
-function UpdateBanner({ status, onRestart }) {
-  if (status?.state === 'downloading') return <div className="update">Baixando atualização… {status.percent}%</div>
-  if (status?.state !== 'ready') return null
+function UpdateModal({ update, currentVersion, onAccept, onDismiss, onClose }) {
+  const { phase, version, percent, error } = update
   return (
-    <div className="update ready">
-      <span>Versão {status.version} pronta</span>
-      <button onClick={onRestart}>Reiniciar</button>
+    <div className="modal-backdrop">
+      <div className="modal" role="dialog" aria-labelledby="update-title">
+        <img className="modal-icon" src={appIcon} alt="" />
+        {phase === 'available' && (
+          <>
+            <h2 id="update-title">Nova versão disponível</h2>
+            <p>
+              O Notas {version} está disponível. Você está usando a versão {currentVersion}.
+              <br />
+              Ao atualizar, o app fecha e abre de novo sozinho.
+            </p>
+            <div className="modal-actions">
+              <button className="btn" onClick={onDismiss}>
+                Agora não
+              </button>
+              <button className="btn primary" autoFocus onClick={onAccept}>
+                Atualizar
+              </button>
+            </div>
+          </>
+        )}
+        {phase === 'downloading' && (
+          <>
+            <h2 id="update-title">Baixando o Notas {version}…</h2>
+            <div className="progress">
+              <div style={{ width: `${percent}%` }} />
+            </div>
+            <p className="muted">{percent}%</p>
+          </>
+        )}
+        {phase === 'installing' && (
+          <>
+            <h2 id="update-title">Instalando…</h2>
+            <p className="muted">O Notas vai fechar e abrir de novo em alguns segundos.</p>
+          </>
+        )}
+        {phase === 'error' && (
+          <>
+            <h2 id="update-title">Não foi possível atualizar</h2>
+            <p className="muted">{error}</p>
+            <div className="modal-actions">
+              <button className="btn" onClick={onClose}>
+                Fechar
+              </button>
+              <button className="btn primary" onClick={onAccept}>
+                Tentar de novo
+              </button>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   )
 }
@@ -244,7 +293,8 @@ export default function App() {
   const [query, setQuery] = useState('')
   const [renaming, setRenaming] = useState(null)
   const [sidebarOpen, setSidebarOpen] = useState(true)
-  const [update, setUpdate] = useState(null)
+  const [update, dispatchUpdate] = useReducer(updateReducer, initialUpdate)
+  const [currentVersion, setCurrentVersion] = useState('')
   const searchRef = useRef(null)
   const editorRef = useRef(null)
   const dataRef = useRef(null)
@@ -258,7 +308,11 @@ export default function App() {
       const first = [...loaded.notes].sort((a, b) => b.updatedAt - a.updatedAt)[0]
       setNoteId(first?.id ?? null)
     })
-    return window.notesApi.onUpdate(setUpdate)
+    window.notesApi.version().then(setCurrentVersion)
+    const unsubscribe = window.notesApi.onUpdate(dispatchUpdate)
+    // A verificação pode ter terminado antes da interface abrir.
+    window.notesApi.getUpdate().then((event) => event && dispatchUpdate(event))
+    return unsubscribe
   }, [])
 
   useEffect(() => {
@@ -267,11 +321,20 @@ export default function App() {
     return () => clearTimeout(t)
   }, [data])
 
-  // Salva na hora antes de reiniciar, para não perder o que foi digitado nos últimos 300 ms.
-  const restartForUpdate = async () => {
-    await window.notesApi.save(dataRef.current)
-    window.notesApi.installUpdate()
+  const startUpdate = () => {
+    dispatchUpdate({ type: 'start' })
+    window.notesApi.downloadUpdate().catch((err) => dispatchUpdate({ type: 'error', message: err.message }))
   }
+
+  // Assim que o download termina: salva na hora (para não perder o que foi digitado nos últimos 300 ms),
+  // e o app fecha, instala e abre de novo sozinho.
+  useEffect(() => {
+    if (update.phase !== 'installing') return
+    window.notesApi
+      .save(dataRef.current)
+      .then(() => window.notesApi.installUpdate())
+      .catch((err) => dispatchUpdate({ type: 'error', message: err.message }))
+  }, [update.phase])
 
   const note = data?.notes.find((n) => n.id === noteId)
   const visibleNotes = useMemo(() => (data ? filterNotes(data.notes, { folderId, query }) : []), [data, folderId, query])
@@ -383,12 +446,9 @@ export default function App() {
           <div className="section-label">No Computador</div>
           {folderRow({ id: ALL, name: 'Todas as Notas' }, false)}
           {data.folders.map((f) => folderRow(f, f.id !== DEFAULT_FOLDER))}
-          <div className="sidebar-bottom">
-            <UpdateBanner status={update} onRestart={restartForUpdate} />
-            <button className="new-folder" onClick={newFolder}>
-              <Icon name="newFolder" size={17} /> Nova Pasta
-            </button>
-          </div>
+          <button className="new-folder" onClick={newFolder}>
+            <Icon name="newFolder" size={17} /> Nova Pasta
+          </button>
         </aside>
       )}
 
@@ -452,6 +512,22 @@ export default function App() {
           </>
         )}
       </main>
+
+      {/* Fica no topo, ao lado dos botões da janela, enquanto houver versão nova não instalada. */}
+      {showUpdateButton(update) && (
+        <button className="update-button" title={`Atualizar para a versão ${update.version}`} onClick={startUpdate}>
+          Atualizar
+        </button>
+      )}
+      {showUpdateModal(update) && (
+        <UpdateModal
+          update={update}
+          currentVersion={currentVersion}
+          onAccept={startUpdate}
+          onDismiss={() => dispatchUpdate({ type: 'dismiss' })}
+          onClose={() => dispatchUpdate({ type: 'close' })}
+        />
+      )}
     </div>
   )
 }

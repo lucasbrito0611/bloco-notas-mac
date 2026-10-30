@@ -3,7 +3,7 @@
 1. Baixe o **`Notas-Setup.exe`** aqui embaixo, em **Assets**.
 2. Dê dois cliques para instalar. O Notas abre sozinho e ganha atalho no Menu Iniciar.
 
-Depois disso, o app se atualiza sozinho quando sair uma versão nova.
+Depois disso, quando sair uma versão nova, o próprio app avisa e se atualiza com um clique.
 
 > Se aparecer **"O Windows protegeu o computador"**, clique em **Mais informações → Executar assim mesmo**. O aviso aparece porque o instalador não tem assinatura digital paga.
 
