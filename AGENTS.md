@@ -30,7 +30,7 @@ electron/main.cjs         processo principal: janela, notes.json, anexos, protoc
 electron/preload.cjs      ponte segura (contextBridge) que expõe window.notesApi para a interface
 electron/attachments.cjs  nomes de arquivo e conversão notas://anexos/<arquivo> → caminho (sem Electron, testável)
 src/App.jsx               a interface: pastas, lista de notas, editor, menus e aviso de atualização
-src/notes.js              lógica pura das notas: título, prévia, nota vazia, datas, busca, grupos, pastas
+src/notes.js              lógica pura das notas: título, prévia, nota vazia, datas, busca, grupos, pastas, lixeira
 src/updates.js            estados do fluxo de atualização (modal, botão, download, instalação)
 src/editor/extensions.js  lista de extensões do TipTap, usada pelo app e pelos testes
 src/editor/attachment.js  nó "attachment" (cartão de PDF, planilha etc.)
@@ -45,22 +45,35 @@ build/make-icon.cjs       gera build/icon.ico e build/icon.png a partir do SVG
 
 A comunicação interface ↔ disco é feita por IPC: `window.notesApi.save(data)` → `ipcMain.handle('notes:save')`. É o equivalente local de um `fetch` para uma API.
 
-API exposta em `window.notesApi`: `load`, `save`, `saveAttachment({ name, type, bytes })`, `openAttachment(url)`, `version`, `getUpdate`, `downloadUpdate`, `installUpdate`, `onUpdate(callback)`.
+API exposta em `window.notesApi`: `load`, `save`, `saveAttachment({ name, type, bytes })`, `openAttachment(url)`, `cleanupAttachments(urlsEmUso)`, `version`, `getUpdate`, `downloadUpdate`, `installUpdate`, `onUpdate(callback)`.
 
 Coloque lógica nova que não dependa de React ou Electron em `src/notes.js` (ou em `electron/attachments.cjs`, se for do lado do disco) e escreva testes para ela.
 
 ## Dados
 
 - Todas as notas e pastas ficam num único arquivo: `%APPDATA%\Notas\notes.json`.
-- Formato: `{ folders: [{ id, name }], notes: [{ id, folderId, pinned, createdAt, updatedAt, html, text }] }`.
+- Formato: `{ folders: [{ id, name }], notes: [{ id, folderId, pinned, createdAt, updatedAt, html, text, deletedAt? }] }`.
 - `html` é o conteúdo do TipTap; `text` é o texto puro, usado para título, prévia e busca.
 - A pasta com id `notes` é a padrão e não pode ser apagada; apagar outra pasta move as notas para ela.
 - A gravação usa arquivo temporário + rename para não corromper o JSON.
 - Anexos (imagens e arquivos) ficam em `%APPDATA%\Notas\anexos\<8 caracteres aleatórios>-<nome>`. A nota guarda só o endereço `notas://anexos/<arquivo>`, servido pelo `protocol.handle` em `main.cjs`.
 - Imagens viram `<img src="notas://...">`; outros arquivos viram `<div data-attachment data-src data-name data-size>`, que abre com duplo clique (`shell.openPath`).
 - Uma nota só é "vazia" (e some ao trocar de nota) se não tiver texto, imagem, anexo nem tabela (`isBlank` em `notes.js`).
-- Ainda não apagamos os arquivos da pasta `anexos` quando a nota é apagada. Limpar anexos órfãos é uma melhoria pendente.
 - Não existe nuvem nem conta. Sincronização seria um recurso novo.
+
+### Lixeira ("Apagadas Recentemente")
+
+- Apagar uma nota não remove nada: só grava `deletedAt` (data em ms) e tira o `pinned`. A nota mantém o `folderId` de origem.
+- `TRASH` (`'__trash__'`) é uma pasta virtual. `filterNotes` mostra notas com `deletedAt` **só** nela; em todas as outras pastas, na contagem e na busca, elas não aparecem. Use sempre `filterNotes`/`countNotes` em vez de filtrar `data.notes` na mão.
+- A pasta "Apagadas Recentemente" só aparece na barra lateral quando tem alguma nota, como no Mac.
+- No lixo, a nota abre só para leitura (`editable: false`) com o botão **Recuperar** (`restoreNote`), que devolve a nota para a pasta de origem, ou para "Notas" se essa pasta foi apagada.
+- No lixo, o botão de lixeira apaga de vez (`deleteForever`), com confirmação. "Esvaziar" apaga todas (`emptyTrash`).
+- Ao abrir o app, `purgeTrash` apaga de vez o que está no lixo há mais de 30 dias (`TRASH_DAYS`).
+- Apagar uma pasta continua movendo as notas dela para "Notas", e não para o lixo.
+
+### Limpeza de anexos
+
+Depois de apagar algo de vez, e toda vez que o app abre, a interface manda para o `main.cjs` a lista de anexos ainda usados (`attachmentUrls`, que inclui as notas no lixo). O `main.cjs` apaga da pasta `anexos` os arquivos que não estão na lista (`orphanFiles`), **mas só os com mais de 1 hora**: um anexo recém-colado já está no disco, mas pode ainda não ter sido salvo na nota.
 
 ## Comandos
 

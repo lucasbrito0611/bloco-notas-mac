@@ -28,6 +28,7 @@ Decidi construir o meu próprio. Este projeto recria a experiência do Notas do 
 - **Tabelas**, com opções para adicionar e apagar linhas e colunas.
 - **Formatação**: título, cabeçalho, subcabeçalho, listas, negrito, itálico, sublinhado, tachado e texto monoespaçado.
 - **Pastas** para organizar (criar, renomear e apagar).
+- **Apagadas Recentemente**: nota apagada vai para a lixeira, de onde dá para recuperar. Depois de 30 dias ela some de vez, junto com os anexos.
 - **Busca** que ignora acentos.
 - **Notas fixadas** no topo e lista agrupada por data (Hoje, Ontem, 7 dias…).
 - **Visual nativo do Windows 11**, com o efeito Mica na barra lateral e tema claro/escuro automático.
@@ -117,7 +118,7 @@ O ícone fica em `build/icon.svg`. Depois de editar, rode `npm run icon` para ge
 - [x] Instalador `.exe` com atualização automática
 - [x] Imagens e anexos nas notas
 - [x] Tabelas
-- [ ] Lixeira ("Apagadas Recentemente")
+- [x] Lixeira ("Apagadas Recentemente")
 - [ ] Sincronização entre computadores
 
 ---

@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld('notesApi', {
   save: (data) => ipcRenderer.invoke('notes:save', data),
   saveAttachment: (file) => ipcRenderer.invoke('attachments:save', file),
   openAttachment: (url) => ipcRenderer.invoke('attachments:open', url),
+  cleanupAttachments: (referencedUrls) => ipcRenderer.invoke('attachments:cleanup', referencedUrls),
   version: () => ipcRenderer.invoke('app:version'),
   getUpdate: () => ipcRenderer.invoke('update:get'),
   downloadUpdate: () => ipcRenderer.invoke('update:download'),

@@ -14,6 +14,15 @@ import {
   formatSize,
   initialData,
   DAY,
+  TRASH,
+  countNotes,
+  moveToTrash,
+  restoreNote,
+  deleteForever,
+  emptyTrash,
+  purgeTrash,
+  daysLeft,
+  attachmentUrls,
 } from '../src/notes.js'
 
 const NOW = new Date(2026, 9, 30, 15, 0).getTime()
@@ -114,5 +123,75 @@ describe('tamanho de arquivo', () => {
     expect(formatSize(500)).toBe('500 B')
     expect(formatSize(2048)).toBe('2 KB')
     expect(formatSize(5.5 * 1024 * 1024)).toBe('5,5 MB')
+  })
+})
+
+describe('lixeira', () => {
+  const base = () => ({
+    folders: [{ id: DEFAULT_FOLDER, name: 'Notas' }, { id: 'f1', name: 'Faculdade' }],
+    notes: [note({ id: 'a', folderId: 'f1', pinned: true, text: 'Prova' }), note({ id: 'b', text: 'Mercado' })],
+  })
+
+  it('apagar manda a nota para a lixeira, que é o único lugar onde ela aparece', () => {
+    const data = moveToTrash(base(), 'a', NOW)
+    expect(filterNotes(data.notes).map((n) => n.id)).toEqual(['b'])
+    expect(filterNotes(data.notes, { folderId: 'f1' })).toHaveLength(0)
+    expect(filterNotes(data.notes, { folderId: TRASH }).map((n) => n.id)).toEqual(['a'])
+    expect(filterNotes(data.notes, { query: 'prova' })).toHaveLength(0)
+    expect(countNotes(data.notes, ALL)).toBe(1)
+    expect(countNotes(data.notes, TRASH)).toBe(1)
+  })
+
+  it('nota apagada perde o "fixada" e fica num grupo sem título', () => {
+    const data = moveToTrash(base(), 'a', NOW)
+    const trashed = filterNotes(data.notes, { folderId: TRASH })
+    expect(trashed[0].pinned).toBe(false)
+    expect(groupNotes(trashed, NOW)).toEqual([['', trashed]])
+  })
+
+  it('recuperar devolve a nota para a pasta de origem', () => {
+    const data = restoreNote(moveToTrash(base(), 'a', NOW), 'a')
+    const a = data.notes.find((n) => n.id === 'a')
+    expect(a.deletedAt).toBeNull()
+    expect(a.folderId).toBe('f1')
+    expect(filterNotes(data.notes, { folderId: 'f1' }).map((n) => n.id)).toEqual(['a'])
+  })
+
+  it('se a pasta de origem foi apagada, recuperar manda para "Notas"', () => {
+    let data = moveToTrash(base(), 'a', NOW)
+    data = { ...data, folders: data.folders.filter((f) => f.id !== 'f1') }
+    expect(restoreNote(data, 'a').notes.find((n) => n.id === 'a').folderId).toBe(DEFAULT_FOLDER)
+  })
+
+  it('apagar permanentemente e esvaziar a lixeira removem de vez', () => {
+    let data = moveToTrash(moveToTrash(base(), 'a', NOW), 'b', NOW)
+    expect(deleteForever(data, 'a').notes.map((n) => n.id)).toEqual(['b'])
+    data = restoreNote(data, 'b')
+    expect(emptyTrash(data).notes.map((n) => n.id)).toEqual(['b'])
+  })
+
+  it('notas na lixeira há mais de 30 dias somem sozinhas', () => {
+    let data = moveToTrash(base(), 'a', NOW - 31 * DAY)
+    data = moveToTrash(data, 'b', NOW - 29 * DAY)
+    expect(purgeTrash(data, NOW).notes.map((n) => n.id)).toEqual(['b'])
+    const clean = base()
+    expect(purgeTrash(clean, NOW)).toBe(clean)
+  })
+
+  it('conta quantos dias faltam para a nota sumir', () => {
+    expect(daysLeft({ deletedAt: NOW }, NOW)).toBe(30)
+    expect(daysLeft({ deletedAt: NOW - 10.5 * DAY }, NOW)).toBe(20)
+    expect(daysLeft({ deletedAt: NOW - 40 * DAY }, NOW)).toBe(0)
+  })
+})
+
+describe('anexos usados pelas notas', () => {
+  it('encontra imagens e arquivos em todas as notas, sem repetir', () => {
+    const notes = [
+      note({ html: '<img src="notas://anexos/a1-foto.png"><div data-attachment="" data-src="notas://anexos/b2-doc.pdf"></div>' }),
+      note({ html: '<img src="notas://anexos/a1-foto.png">', deletedAt: NOW }),
+      note({ html: '<p>sem anexos</p>' }),
+    ]
+    expect(attachmentUrls(notes).sort()).toEqual(['notas://anexos/a1-foto.png', 'notas://anexos/b2-doc.pdf'])
   })
 })

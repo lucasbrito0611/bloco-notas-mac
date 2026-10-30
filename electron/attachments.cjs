@@ -51,4 +51,10 @@ const MIME = {
 }
 const mimeFor = (name) => MIME[path.extname(name).slice(1).toLowerCase()] || 'application/octet-stream'
 
-module.exports = { SCHEME, HOST, safeFileName, storedName, urlFor, resolveAttachment, mimeFor }
+// Arquivos da pasta de anexos que nenhuma nota usa mais (a nota foi apagada de vez).
+function orphanFiles(fileNames, referencedUrls) {
+  const used = new Set(referencedUrls.map((url) => decodeURIComponent(url.split('/').pop())))
+  return fileNames.filter((name) => !used.has(name))
+}
+
+module.exports = { SCHEME, HOST, safeFileName, storedName, urlFor, resolveAttachment, mimeFor, orphanFiles }

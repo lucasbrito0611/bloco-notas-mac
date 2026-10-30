@@ -79,22 +79,64 @@ export function groupOf(note, now = Date.now()) {
 
 // ---------- listas ----------
 
+const isDeleted = (n) => Boolean(n.deletedAt)
+
+// A lixeira é uma "pasta" virtual: notas apagadas só aparecem nela, e em nenhum outro lugar.
 export function filterNotes(notes, { folderId = ALL, query = '' } = {}) {
   const q = normalize(query.trim())
   return notes
-    .filter((n) => folderId === ALL || n.folderId === folderId)
+    .filter((n) => (folderId === TRASH ? isDeleted(n) : !isDeleted(n) && (folderId === ALL || n.folderId === folderId)))
     .filter((n) => !q || normalize(n.text).includes(q))
-    .sort((a, b) => b.updatedAt - a.updatedAt)
+    .sort((a, b) => (folderId === TRASH ? b.deletedAt - a.deletedAt : b.updatedAt - a.updatedAt))
 }
+
+export const countNotes = (notes, folderId) => filterNotes(notes, { folderId }).length
 
 export function groupNotes(notes, now = Date.now()) {
   const map = new Map()
   for (const n of notes) {
-    const g = groupOf(n, now)
+    const g = isDeleted(n) ? '' : groupOf(n, now)
     if (!map.has(g)) map.set(g, [])
     map.get(g).push(n)
   }
-  return GROUP_ORDER.filter((g) => map.has(g)).map((g) => [g, map.get(g)])
+  // Na lixeira não há grupos por data: tudo fica num grupo sem título.
+  return ['', ...GROUP_ORDER].filter((g) => map.has(g)).map((g) => [g, map.get(g)])
+}
+
+// ---------- lixeira ("Apagadas Recentemente") ----------
+
+export const TRASH = '__trash__'
+export const TRASH_DAYS = 30
+
+const patchNote = (data, id, patch) => ({ ...data, notes: data.notes.map((n) => (n.id === id ? { ...n, ...patch } : n)) })
+
+export const moveToTrash = (data, id, now = Date.now()) => patchNote(data, id, { deletedAt: now, pinned: false })
+
+// Recuperar devolve a nota para a pasta de origem; se essa pasta não existe mais, vai para "Notas".
+export function restoreNote(data, id) {
+  const note = data.notes.find((n) => n.id === id)
+  const folderExists = data.folders.some((f) => f.id === note?.folderId)
+  return patchNote(data, id, { deletedAt: null, folderId: folderExists ? note.folderId : DEFAULT_FOLDER })
+}
+
+export const deleteForever = (data, id) => ({ ...data, notes: data.notes.filter((n) => n.id !== id) })
+
+export const emptyTrash = (data) => ({ ...data, notes: data.notes.filter((n) => !isDeleted(n)) })
+
+// Notas apagadas há mais de 30 dias somem de vez.
+export function purgeTrash(data, now = Date.now()) {
+  const limit = now - TRASH_DAYS * DAY
+  const notes = data.notes.filter((n) => !isDeleted(n) || n.deletedAt > limit)
+  return notes.length === data.notes.length ? data : { ...data, notes }
+}
+
+export const daysLeft = (note, now = Date.now()) => Math.max(0, TRASH_DAYS - Math.floor((now - note.deletedAt) / DAY))
+
+// Endereços dos anexos (imagens e arquivos) usados em todas as notas, inclusive as que estão no lixo.
+export function attachmentUrls(notes) {
+  const urls = new Set()
+  for (const n of notes) for (const m of (n.html || '').matchAll(/notas:\/\/anexos\/[^"'\s)<>]+/g)) urls.add(m[0])
+  return [...urls]
 }
 
 // Apagar uma pasta move as notas dela para a pasta padrão, que nunca é apagada.

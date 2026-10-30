@@ -41,6 +41,18 @@ function saveAttachment({ name, type, bytes }) {
   }
 }
 
+// Apaga do disco os anexos que nenhuma nota usa mais (ex.: a nota foi apagada de vez).
+// Só apaga arquivos com mais de 1 hora: um anexo recém-colado pode ainda não ter sido salvo na nota.
+function cleanupAttachments(referencedUrls) {
+  if (!fs.existsSync(attachmentsDir())) return 0
+  const oneHourAgo = Date.now() - 60 * 60 * 1000
+  const orphans = attachments
+    .orphanFiles(fs.readdirSync(attachmentsDir()), referencedUrls)
+    .filter((name) => fs.statSync(path.join(attachmentsDir(), name)).mtimeMs < oneHourAgo)
+  for (const name of orphans) fs.rmSync(path.join(attachmentsDir(), name), { force: true })
+  return orphans.length
+}
+
 // notas://anexos/<arquivo> funciona como um "servidor de arquivos" local para as imagens e anexos das notas.
 protocol.registerSchemesAsPrivileged([
   { scheme: attachments.SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
@@ -126,6 +138,7 @@ function setupUpdates() {
 ipcMain.handle('notes:load', () => loadData())
 ipcMain.handle('notes:save', (_e, data) => saveData(data))
 ipcMain.handle('attachments:save', (_e, file) => saveAttachment(file))
+ipcMain.handle('attachments:cleanup', (_e, referencedUrls) => cleanupAttachments(referencedUrls))
 ipcMain.handle('attachments:open', (_e, url) => {
   const file = attachments.resolveAttachment(attachmentsDir(), url)
   if (file) return shell.openPath(file)

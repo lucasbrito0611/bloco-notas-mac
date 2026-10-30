@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import path from 'node:path'
 import attachments from '../electron/attachments.cjs'
 
-const { safeFileName, storedName, urlFor, resolveAttachment, mimeFor } = attachments
+const { safeFileName, storedName, urlFor, resolveAttachment, mimeFor, orphanFiles } = attachments
 const DIR = path.resolve('C:/Users/teste/AppData/Roaming/Notas/anexos')
 
 describe('nomes de arquivo', () => {
@@ -45,5 +45,17 @@ describe('tipo do arquivo', () => {
     expect(mimeFor('Foto.JPG')).toBe('image/jpeg')
     expect(mimeFor('doc.pdf')).toBe('application/pdf')
     expect(mimeFor('planilha.xlsx')).toBe('application/octet-stream')
+  })
+})
+
+describe('anexos órfãos', () => {
+  it('lista os arquivos que nenhuma nota usa mais', () => {
+    const files = ['a1-foto.png', 'b2-meu doc.pdf', 'c3-velho.png']
+    const used = ['notas://anexos/a1-foto.png', urlFor('b2-meu doc.pdf')]
+    expect(orphanFiles(files, used)).toEqual(['c3-velho.png'])
+  })
+
+  it('sem notas usando anexos, todos são órfãos', () => {
+    expect(orphanFiles(['x.png'], [])).toEqual(['x.png'])
   })
 })

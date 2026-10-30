@@ -18,6 +18,7 @@ if (!window.notesApi) {
       return { url, name, size: bytes.byteLength, mime: type }
     },
     openAttachment: async (url) => window.open(url),
+    cleanupAttachments: async () => 0,
     version: async () => 'web',
     getUpdate: async () => null,
     downloadUpdate: async () => {},

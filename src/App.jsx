@@ -16,6 +16,16 @@ import {
   filterNotes,
   groupNotes,
   removeFolder,
+  TRASH,
+  TRASH_DAYS,
+  countNotes,
+  moveToTrash,
+  restoreNote,
+  deleteForever,
+  emptyTrash,
+  purgeTrash,
+  daysLeft,
+  attachmentUrls,
 } from './notes.js'
 
 // ---------- ícones ----------
@@ -161,12 +171,15 @@ function TableMenu({ editor }) {
   )
 }
 
-function NoteEditor({ note, onChange, onTogglePin, editorRef }) {
+function NoteEditor({ note, onChange, onTogglePin, onRestore, editorRef }) {
   const fileInput = useRef(null)
+  const inTrash = Boolean(note.deletedAt)
   const editor = useEditor({
     extensions: buildExtensions({ onFiles: insertFiles }),
     content: note.html,
-    autofocus: isBlank(note) ? 'start' : false,
+    // Nota no lixo é só para leitura: para editar, primeiro recupere.
+    editable: !inTrash,
+    autofocus: !inTrash && isBlank(note) ? 'start' : false,
     shouldRerenderOnTransaction: true,
     editorProps: {
       // Duplo clique num anexo abre o arquivo no programa padrão do Windows.
@@ -184,7 +197,30 @@ function NoteEditor({ note, onChange, onTogglePin, editorRef }) {
     return () => (editorRef.current = null)
   }, [editor, editorRef])
 
+  useEffect(() => {
+    editor?.setEditable(!inTrash)
+  }, [editor, inTrash])
+
   if (!editor) return null
+  if (inTrash) {
+    return (
+      <>
+        <header className="editor-bar drag" />
+        <div className="trash-banner">
+          <span>
+            Esta nota está em Apagadas Recentemente e será apagada de vez em {daysLeft(note)} {daysLeft(note) === 1 ? 'dia' : 'dias'}.
+          </span>
+          <button className="btn primary" onClick={onRestore}>
+            Recuperar
+          </button>
+        </div>
+        <div className="editor-scroll">
+          <div className="note-date">{longDate(note.updatedAt)}</div>
+          <EditorContent editor={editor} className="editor" />
+        </div>
+      </>
+    )
+  }
   return (
     <>
       <header className="editor-bar drag">
@@ -303,10 +339,11 @@ export default function App() {
   // carregar e salvar
   useEffect(() => {
     window.notesApi.load().then((d) => {
-      const loaded = d || initialData()
+      // Ao abrir: some com o que está no lixo há mais de 30 dias e com os anexos que ninguém usa mais.
+      const loaded = purgeTrash(d || initialData())
       setData(loaded)
-      const first = [...loaded.notes].sort((a, b) => b.updatedAt - a.updatedAt)[0]
-      setNoteId(first?.id ?? null)
+      setNoteId(filterNotes(loaded.notes)[0]?.id ?? null)
+      window.notesApi.cleanupAttachments(attachmentUrls(loaded.notes))
     })
     window.notesApi.version().then(setCurrentVersion)
     const unsubscribe = window.notesApi.onUpdate(dispatchUpdate)
@@ -355,7 +392,9 @@ export default function App() {
 
   const newNote = useCallback(() => {
     const now = Date.now()
-    const n = { id: uid(), folderId: folderId === ALL ? DEFAULT_FOLDER : folderId, pinned: false, createdAt: now, updatedAt: now, html: '', text: '' }
+    const target = folderId === ALL || folderId === TRASH ? DEFAULT_FOLDER : folderId
+    const n = { id: uid(), folderId: target, pinned: false, createdAt: now, updatedAt: now, html: '', text: '' }
+    if (folderId === TRASH) setFolderId(ALL)
     setQuery('')
     setData((d) => ({ ...d, notes: [...d.notes.filter((x) => !isBlank(x) || x.id !== noteId), n] }))
     setNoteId(n.id)
@@ -365,13 +404,38 @@ export default function App() {
     setData((d) => ({ ...d, notes: d.notes.map((n) => (n.id === id ? { ...n, ...patch } : n)) }))
   }, [])
 
+  // Depois de apagar algo de vez, tira do disco os anexos que ficaram sem nota.
+  const removeForever = useCallback((change) => {
+    setData((d) => {
+      const next = change(d)
+      window.notesApi.cleanupAttachments(attachmentUrls(next.notes))
+      return next
+    })
+  }, [])
+
+  // Fora do lixo, apagar manda a nota para "Apagadas Recentemente". Dentro dele, apaga de vez.
   const deleteNote = useCallback(() => {
     if (!note) return
+    if (note.deletedAt && !confirm(`Apagar "${titleOf(note)}" permanentemente? Essa ação não pode ser desfeita.`)) return
     const idx = visibleNotes.findIndex((n) => n.id === note.id)
     const next = visibleNotes[idx + 1] || visibleNotes[idx - 1]
-    setData((d) => ({ ...d, notes: d.notes.filter((n) => n.id !== note.id) }))
+    if (note.deletedAt) removeForever((d) => deleteForever(d, note.id))
+    else setData((d) => moveToTrash(d, note.id))
     setNoteId(next?.id ?? null)
-  }, [note, visibleNotes])
+  }, [note, visibleNotes, removeForever])
+
+  const restore = (id) => {
+    setData((d) => restoreNote(d, id))
+    setFolderId(ALL)
+  }
+
+  const clearTrash = () => {
+    const total = countNotes(data.notes, TRASH)
+    if (!confirm(`Apagar ${total === 1 ? 'a nota' : `as ${total} notas`} de Apagadas Recentemente permanentemente? Essa ação não pode ser desfeita.`)) return
+    removeForever(emptyTrash)
+    setFolderId(ALL)
+    setNoteId(filterNotes(data.notes)[0]?.id ?? null)
+  }
 
   const newFolder = useCallback(() => {
     const f = { id: uid(), name: 'Nova Pasta' }
@@ -405,15 +469,17 @@ export default function App() {
 
   if (!data) return null
 
-  const count = (id) => data.notes.filter((n) => id === ALL || n.folderId === id).length
-  const folderRow = (f, removable) => (
+  const count = (id) => countNotes(data.notes, id)
+  const trashCount = count(TRASH)
+  const inTrashFolder = folderId === TRASH
+  const folderRow = (f, removable, icon = 'folder') => (
     <div
       key={f.id}
       className={`folder ${folderId === f.id ? 'sel' : ''}`}
       onClick={() => setFolderId(f.id)}
-      onDoubleClick={() => f.id !== ALL && setRenaming(f.id)}
+      onDoubleClick={() => f.id !== ALL && f.id !== TRASH && setRenaming(f.id)}
     >
-      <Icon name="folder" size={17} />
+      <Icon name={icon} size={17} />
       {renaming === f.id ? (
         <input
           autoFocus
@@ -446,6 +512,8 @@ export default function App() {
           <div className="section-label">No Computador</div>
           {folderRow({ id: ALL, name: 'Todas as Notas' }, false)}
           {data.folders.map((f) => folderRow(f, f.id !== DEFAULT_FOLDER))}
+          {/* Como no Mac, a pasta do lixo só aparece quando tem alguma nota dentro. */}
+          {(trashCount > 0 || inTrashFolder) && folderRow({ id: TRASH, name: 'Apagadas Recentemente' }, false, 'trash')}
           <button className="new-folder" onClick={newFolder}>
             <Icon name="newFolder" size={17} /> Nova Pasta
           </button>
@@ -460,7 +528,12 @@ export default function App() {
             </button>
           </div>
           <div className="tools no-drag">
-            <button className="tool" title="Apagar nota" onClick={deleteNote} disabled={!note}>
+            <button
+              className="tool"
+              title={note?.deletedAt ? 'Apagar permanentemente' : 'Mover para Apagadas Recentemente'}
+              onClick={deleteNote}
+              disabled={!note}
+            >
               <Icon name="trash" />
             </button>
             <button className="tool" title="Nova nota (Ctrl+N)" onClick={newNote}>
@@ -473,14 +546,20 @@ export default function App() {
           <input ref={searchRef} placeholder="Buscar" value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => e.key === 'Escape' && setQuery('')} />
         </div>
         <div className="notes">
+          {inTrashFolder && trashCount > 0 && (
+            <div className="trash-info">
+              <span>As notas ficam aqui por {TRASH_DAYS} dias antes de serem apagadas de vez.</span>
+              <button onClick={clearTrash}>Esvaziar</button>
+            </div>
+          )}
           {grouped.map(([group, notes]) => (
-            <div key={group}>
-              <div className="group-label">{group}</div>
+            <div key={group || 'lixo'}>
+              {group && <div className="group-label">{group}</div>}
               {notes.map((n) => (
                 <div key={n.id} className={`note-item ${n.id === noteId ? 'sel' : ''}`} onClick={() => selectNote(n.id)}>
                   <div className="note-title">{titleOf(n)}</div>
                   <div className="note-sub">
-                    <span className="note-time">{shortDate(n.updatedAt)}</span>
+                    <span className="note-time">{n.deletedAt ? `${daysLeft(n)} ${daysLeft(n) === 1 ? 'dia' : 'dias'}` : shortDate(n.updatedAt)}</span>
                     <span className="note-preview">{previewOf(n)}</span>
                   </div>
                   {folderId === ALL && data.folders.length > 1 && (
@@ -504,6 +583,7 @@ export default function App() {
             editorRef={editorRef}
             onChange={(html, text) => updateNote(note.id, { html, text, updatedAt: Date.now() })}
             onTogglePin={() => updateNote(note.id, { pinned: !note.pinned })}
+            onRestore={() => restore(note.id)}
           />
         ) : (
           <>
