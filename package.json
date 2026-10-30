@@ -1,6 +1,6 @@
 {
   "name": "bloco-notas-mac",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Clone do Apple Notes para Windows",
   "main": "electron/main.cjs",
   "scripts": {
