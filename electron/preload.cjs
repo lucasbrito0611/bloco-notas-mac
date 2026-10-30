@@ -3,4 +3,13 @@ const { contextBridge, ipcRenderer } = require('electron')
 contextBridge.exposeInMainWorld('notesApi', {
   load: () => ipcRenderer.invoke('notes:load'),
   save: (data) => ipcRenderer.invoke('notes:save', data),
+  saveAttachment: (file) => ipcRenderer.invoke('attachments:save', file),
+  openAttachment: (url) => ipcRenderer.invoke('attachments:open', url),
+  version: () => ipcRenderer.invoke('app:version'),
+  installUpdate: () => ipcRenderer.invoke('update:install'),
+  onUpdate: (callback) => {
+    const listener = (_e, status) => callback(status)
+    ipcRenderer.on('update:status', listener)
+    return () => ipcRenderer.removeListener('update:status', listener)
+  },
 })

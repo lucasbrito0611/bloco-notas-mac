@@ -1,68 +1,20 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useEditor, EditorContent } from '@tiptap/react'
-import StarterKit from '@tiptap/starter-kit'
-import TaskList from '@tiptap/extension-task-list'
-import TaskItem from '@tiptap/extension-task-item'
-import Placeholder from '@tiptap/extension-placeholder'
-
-const ALL = '__all__'
-const DEFAULT_FOLDER = 'notes'
-const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36)
-
-function initialData() {
-  const now = Date.now()
-  return {
-    folders: [{ id: DEFAULT_FOLDER, name: 'Notas' }],
-    notes: [
-      {
-        id: uid(),
-        folderId: DEFAULT_FOLDER,
-        pinned: true,
-        createdAt: now,
-        updatedAt: now,
-        html:
-          '<h1>Bem-vindo ao Notas</h1><p>Um clone do Notas do Mac, feito para o Windows.</p>' +
-          '<ul data-type="taskList"><li data-type="taskItem" data-checked="true"><p>Criar o protótipo</p></li>' +
-          '<li data-type="taskItem" data-checked="false"><p>Testar os atalhos: Ctrl+N, Ctrl+F, Ctrl+Shift+L</p></li></ul>',
-        text: 'Bem-vindo ao Notas\nUm clone do Notas do Mac, feito para o Windows.',
-      },
-    ],
-  }
-}
-
-// ---------- texto e datas ----------
-
-const lines = (text) => (text || '').split('\n').map((l) => l.trim()).filter(Boolean)
-const titleOf = (note) => lines(note.text)[0] || 'Nova Nota'
-const previewOf = (note) => lines(note.text)[1] || 'Nenhum texto adicional'
-const normalize = (s) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
-
-const DAY = 86400000
-const startOfDay = (t) => new Date(new Date(t).toDateString()).getTime()
-
-function shortDate(t) {
-  const diff = startOfDay(Date.now()) - startOfDay(t)
-  if (diff === 0) return new Date(t).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
-  if (diff === DAY) return 'Ontem'
-  if (diff < 7 * DAY) return new Date(t).toLocaleDateString('pt-BR', { weekday: 'long' })
-  return new Date(t).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' })
-}
-
-function longDate(t) {
-  const d = new Date(t)
-  return `${d.toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' })} às ${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`
-}
-
-function groupOf(note) {
-  if (note.pinned) return 'Fixadas'
-  const diff = startOfDay(Date.now()) - startOfDay(note.updatedAt)
-  if (diff === 0) return 'Hoje'
-  if (diff === DAY) return 'Ontem'
-  if (diff < 7 * DAY) return '7 Dias Anteriores'
-  if (diff < 30 * DAY) return '30 Dias Anteriores'
-  return 'Mais Antigas'
-}
-const GROUP_ORDER = ['Fixadas', 'Hoje', 'Ontem', '7 Dias Anteriores', '30 Dias Anteriores', 'Mais Antigas']
+import { buildExtensions, nodeForAttachment } from './editor/extensions.js'
+import {
+  ALL,
+  DEFAULT_FOLDER,
+  uid,
+  initialData,
+  titleOf,
+  previewOf,
+  isBlank,
+  shortDate,
+  longDate,
+  filterNotes,
+  groupNotes,
+  removeFolder,
+} from './notes.js'
 
 // ---------- ícones ----------
 
@@ -71,6 +23,8 @@ const ICONS = {
   trash: 'M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13',
   pin: 'M9 4h6l-1 6 3 3H7l3-3-1-6zM12 13v7',
   check: 'M4 6h2M4 12h2M4 18h2M9 6h11M9 12h11M9 18h11',
+  table: 'M4 5h16v14H4zM4 10h16M4 15h16M10 5v14',
+  clip: 'M20 11.5l-8 8a5 5 0 0 1-7-7l8.5-8.5a3.3 3.3 0 0 1 4.7 4.7L9.7 17a1.7 1.7 0 0 1-2.4-2.4L15 7',
   folder: 'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z',
   newFolder: 'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM12 10v6M9 13h6',
   search: 'M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4',
@@ -87,6 +41,30 @@ function Icon({ name, size = 18 }) {
 
 // ---------- editor ----------
 
+// Salva cada arquivo como anexo e insere na nota: imagens aparecem inline, o resto vira um cartão.
+async function insertFiles(editor, files, pos) {
+  const nodes = []
+  for (const file of files) {
+    const saved = await window.notesApi.saveAttachment({ name: file.name || 'imagem.png', type: file.type, bytes: await file.arrayBuffer() })
+    nodes.push(nodeForAttachment(saved))
+  }
+  if (!nodes.length || editor.isDestroyed) return
+  editor.chain().insertContentAt(pos ?? editor.state.selection.to, nodes).focus().run()
+}
+
+// Fecha um menu suspenso ao clicar fora dele.
+function usePopover() {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+  useEffect(() => {
+    if (!open) return
+    const close = (e) => !ref.current?.contains(e.target) && setOpen(false)
+    window.addEventListener('mousedown', close)
+    return () => window.removeEventListener('mousedown', close)
+  }, [open])
+  return { open, setOpen, ref }
+}
+
 const FORMATS = [
   { label: 'Título', cls: 'fmt-h1', run: (c) => c.setHeading({ level: 1 }), active: (e) => e.isActive('heading', { level: 1 }) },
   { label: 'Cabeçalho', cls: 'fmt-h2', run: (c) => c.setHeading({ level: 2 }), active: (e) => e.isActive('heading', { level: 2 }) },
@@ -98,14 +76,7 @@ const FORMATS = [
 ]
 
 function FormatMenu({ editor }) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef(null)
-  useEffect(() => {
-    if (!open) return
-    const close = (e) => !ref.current?.contains(e.target) && setOpen(false)
-    window.addEventListener('mousedown', close)
-    return () => window.removeEventListener('mousedown', close)
-  }, [open])
+  const { open, setOpen, ref } = usePopover()
 
   const mark = (name, label, cls) => (
     <button className={`mark-btn ${cls} ${editor.isActive(name) ? 'on' : ''}`} onClick={() => editor.chain().focus().toggleMark(name).run()}>
@@ -144,17 +115,65 @@ function FormatMenu({ editor }) {
   )
 }
 
+const TABLE_ACTIONS = [
+  { label: 'Adicionar linha acima', run: (c) => c.addRowBefore() },
+  { label: 'Adicionar linha abaixo', run: (c) => c.addRowAfter() },
+  { label: 'Adicionar coluna à esquerda', run: (c) => c.addColumnBefore() },
+  { label: 'Adicionar coluna à direita', run: (c) => c.addColumnAfter() },
+  { label: 'Apagar linha', run: (c) => c.deleteRow(), danger: true },
+  { label: 'Apagar coluna', run: (c) => c.deleteColumn(), danger: true },
+  { label: 'Apagar tabela', run: (c) => c.deleteTable(), danger: true },
+]
+
+// Fora de uma tabela, o botão insere uma tabela 3×3. Dentro dela, abre as opções de linhas e colunas.
+function TableMenu({ editor }) {
+  const { open, setOpen, ref } = usePopover()
+  const inTable = editor.isActive('table')
+
+  return (
+    <div className="format-menu" ref={ref}>
+      <button
+        className={`tool ${inTable ? 'on' : ''}`}
+        title={inTable ? 'Opções da tabela' : 'Inserir tabela'}
+        onClick={() => (inTable ? setOpen(!open) : editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: false }).run())}
+      >
+        <Icon name="table" />
+      </button>
+      {open && inTable && (
+        <div className="popover">
+          {TABLE_ACTIONS.map((a) => (
+            <button
+              key={a.label}
+              className={`fmt ${a.danger ? 'danger' : ''}`}
+              onClick={() => {
+                a.run(editor.chain().focus()).run()
+                setOpen(false)
+              }}
+            >
+              {a.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function NoteEditor({ note, onChange, onTogglePin, editorRef }) {
+  const fileInput = useRef(null)
   const editor = useEditor({
-    extensions: [
-      StarterKit,
-      TaskList,
-      TaskItem.configure({ nested: true }),
-      Placeholder.configure({ placeholder: ({ pos }) => (pos === 0 ? 'Título' : '') }),
-    ],
+    extensions: buildExtensions({ onFiles: insertFiles }),
     content: note.html,
-    autofocus: note.text.trim() ? false : 'start',
+    autofocus: isBlank(note) ? 'start' : false,
     shouldRerenderOnTransaction: true,
+    editorProps: {
+      // Duplo clique num anexo abre o arquivo no programa padrão do Windows.
+      handleDoubleClickOn: (_view, _pos, node) => {
+        if (node.type.name !== 'attachment') return false
+        window.notesApi.openAttachment(node.attrs.src)
+        return true
+      },
+    },
     onUpdate: ({ editor }) => onChange(editor.getHTML(), editor.getText({ blockSeparator: '\n' })),
   })
 
@@ -176,6 +195,20 @@ function NoteEditor({ note, onChange, onTogglePin, editorRef }) {
           >
             <Icon name="check" />
           </button>
+          <TableMenu editor={editor} />
+          <button className="tool" title="Anexar imagem ou arquivo" onClick={() => fileInput.current.click()}>
+            <Icon name="clip" />
+          </button>
+          <input
+            ref={fileInput}
+            type="file"
+            multiple
+            hidden
+            onChange={(e) => {
+              insertFiles(editor, [...e.target.files])
+              e.target.value = ''
+            }}
+          />
           <button className={`tool ${note.pinned ? 'on' : ''}`} title={note.pinned ? 'Desafixar nota' : 'Fixar nota'} onClick={onTogglePin}>
             <Icon name="pin" />
           </button>
@@ -189,6 +222,19 @@ function NoteEditor({ note, onChange, onTogglePin, editorRef }) {
   )
 }
 
+// ---------- atualização ----------
+
+function UpdateBanner({ status, onRestart }) {
+  if (status?.state === 'downloading') return <div className="update">Baixando atualização… {status.percent}%</div>
+  if (status?.state !== 'ready') return null
+  return (
+    <div className="update ready">
+      <span>Versão {status.version} pronta</span>
+      <button onClick={onRestart}>Reiniciar</button>
+    </div>
+  )
+}
+
 // ---------- app ----------
 
 export default function App() {
@@ -198,8 +244,11 @@ export default function App() {
   const [query, setQuery] = useState('')
   const [renaming, setRenaming] = useState(null)
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [update, setUpdate] = useState(null)
   const searchRef = useRef(null)
   const editorRef = useRef(null)
+  const dataRef = useRef(null)
+  dataRef.current = data
 
   // carregar e salvar
   useEffect(() => {
@@ -209,6 +258,7 @@ export default function App() {
       const first = [...loaded.notes].sort((a, b) => b.updatedAt - a.updatedAt)[0]
       setNoteId(first?.id ?? null)
     })
+    return window.notesApi.onUpdate(setUpdate)
   }, [])
 
   useEffect(() => {
@@ -217,33 +267,22 @@ export default function App() {
     return () => clearTimeout(t)
   }, [data])
 
+  // Salva na hora antes de reiniciar, para não perder o que foi digitado nos últimos 300 ms.
+  const restartForUpdate = async () => {
+    await window.notesApi.save(dataRef.current)
+    window.notesApi.installUpdate()
+  }
+
   const note = data?.notes.find((n) => n.id === noteId)
-
-  const visibleNotes = useMemo(() => {
-    if (!data) return []
-    const q = normalize(query.trim())
-    return data.notes
-      .filter((n) => folderId === ALL || n.folderId === folderId)
-      .filter((n) => !q || normalize(n.text).includes(q))
-      .sort((a, b) => b.updatedAt - a.updatedAt)
-  }, [data, folderId, query])
-
-  const grouped = useMemo(() => {
-    const map = new Map()
-    for (const n of visibleNotes) {
-      const g = groupOf(n)
-      if (!map.has(g)) map.set(g, [])
-      map.get(g).push(n)
-    }
-    return GROUP_ORDER.filter((g) => map.has(g)).map((g) => [g, map.get(g)])
-  }, [visibleNotes])
+  const visibleNotes = useMemo(() => (data ? filterNotes(data.notes, { folderId, query }) : []), [data, folderId, query])
+  const grouped = useMemo(() => groupNotes(visibleNotes), [visibleNotes])
 
   // Como no Mac: uma nota vazia some quando você sai dela.
   const selectNote = useCallback(
     (id) => {
       setData((d) => {
         const cur = d.notes.find((n) => n.id === noteId)
-        if (cur && cur.id !== id && !cur.text.trim()) return { ...d, notes: d.notes.filter((n) => n.id !== cur.id) }
+        if (cur && cur.id !== id && isBlank(cur)) return { ...d, notes: d.notes.filter((n) => n.id !== cur.id) }
         return d
       })
       setNoteId(id)
@@ -255,7 +294,7 @@ export default function App() {
     const now = Date.now()
     const n = { id: uid(), folderId: folderId === ALL ? DEFAULT_FOLDER : folderId, pinned: false, createdAt: now, updatedAt: now, html: '', text: '' }
     setQuery('')
-    setData((d) => ({ ...d, notes: [...d.notes.filter((x) => x.text.trim() || x.id !== noteId), n] }))
+    setData((d) => ({ ...d, notes: [...d.notes.filter((x) => !isBlank(x) || x.id !== noteId), n] }))
     setNoteId(n.id)
   }, [folderId, noteId])
 
@@ -281,10 +320,7 @@ export default function App() {
 
   const deleteFolder = (f) => {
     if (!confirm(`Apagar a pasta "${f.name}"? As notas dela vão para "Notas".`)) return
-    setData((d) => ({
-      folders: d.folders.filter((x) => x.id !== f.id),
-      notes: d.notes.map((n) => (n.folderId === f.id ? { ...n, folderId: DEFAULT_FOLDER } : n)),
-    }))
+    setData((d) => removeFolder(d, f.id))
     if (folderId === f.id) setFolderId(ALL)
   }
 
@@ -347,9 +383,12 @@ export default function App() {
           <div className="section-label">No Computador</div>
           {folderRow({ id: ALL, name: 'Todas as Notas' }, false)}
           {data.folders.map((f) => folderRow(f, f.id !== DEFAULT_FOLDER))}
-          <button className="new-folder" onClick={newFolder}>
-            <Icon name="newFolder" size={17} /> Nova Pasta
-          </button>
+          <div className="sidebar-bottom">
+            <UpdateBanner status={update} onRestart={restartForUpdate} />
+            <button className="new-folder" onClick={newFolder}>
+              <Icon name="newFolder" size={17} /> Nova Pasta
+            </button>
+          </div>
         </aside>
       )}
 

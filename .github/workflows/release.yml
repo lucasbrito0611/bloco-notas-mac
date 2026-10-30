@@ -10,7 +10,12 @@ permissions:
   contents: write
 
 jobs:
+  # Se algum teste falhar, o job de release nem começa e nada é publicado.
+  test:
+    uses: ./.github/workflows/test.yml
+
   release:
+    needs: test
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4

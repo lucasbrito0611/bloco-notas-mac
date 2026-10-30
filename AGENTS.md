@@ -26,17 +26,27 @@ Escolhemos Electron em vez de Tauri porque é tudo JavaScript e não exige Rust 
 ## Estrutura
 
 ```
-electron/main.cjs     processo principal: cria a janela, lê/grava notes.json, verifica atualizações
-electron/preload.cjs  ponte segura (contextBridge) que expõe window.notesApi.load/save para a interface
-src/App.jsx           a interface inteira: pastas, lista de notas, editor e atalhos
-src/styles.css        visual, com tokens de cor em :root e tema escuro via prefers-color-scheme
-src/main.jsx          entrada do React; fora do Electron, cai num notesApi que usa localStorage
-build/icon.svg        fonte do ícone (desenho original, inspirado no Notas)
-build/make-icon.cjs   gera build/icon.ico e build/icon.png a partir do SVG
-.github/workflows/release.yml  gera e publica o instalador quando uma tag v* é enviada
+electron/main.cjs         processo principal: janela, notes.json, anexos, protocolo notas:// e atualizações
+electron/preload.cjs      ponte segura (contextBridge) que expõe window.notesApi para a interface
+electron/attachments.cjs  nomes de arquivo e conversão notas://anexos/<arquivo> → caminho (sem Electron, testável)
+src/App.jsx               a interface: pastas, lista de notas, editor, menus e aviso de atualização
+src/notes.js              lógica pura das notas: título, prévia, nota vazia, datas, busca, grupos, pastas
+src/editor/extensions.js  lista de extensões do TipTap, usada pelo app e pelos testes
+src/editor/attachment.js  nó "attachment" (cartão de PDF, planilha etc.)
+src/styles.css            visual, com tokens de cor em :root e tema escuro via prefers-color-scheme
+src/main.jsx              entrada do React; fora do Electron, cai num notesApi que usa localStorage
+tests/                    testes unitários (Vitest)
+build/icon.svg            fonte do ícone (desenho original, inspirado no Notas)
+build/make-icon.cjs       gera build/icon.ico e build/icon.png a partir do SVG
+.github/workflows/test.yml     roda os testes e o build em todo push na main e em PRs
+.github/workflows/release.yml  roda os testes e, se passarem, gera e publica o instalador quando uma tag v* é enviada
 ```
 
 A comunicação interface ↔ disco é feita por IPC: `window.notesApi.save(data)` → `ipcMain.handle('notes:save')`. É o equivalente local de um `fetch` para uma API.
+
+API exposta em `window.notesApi`: `load`, `save`, `saveAttachment({ name, type, bytes })`, `openAttachment(url)`, `version`, `installUpdate`, `onUpdate(callback)`.
+
+Coloque lógica nova que não dependa de React ou Electron em `src/notes.js` (ou em `electron/attachments.cjs`, se for do lado do disco) e escreva testes para ela.
 
 ## Dados
 
@@ -45,6 +55,10 @@ A comunicação interface ↔ disco é feita por IPC: `window.notesApi.save(data
 - `html` é o conteúdo do TipTap; `text` é o texto puro, usado para título, prévia e busca.
 - A pasta com id `notes` é a padrão e não pode ser apagada; apagar outra pasta move as notas para ela.
 - A gravação usa arquivo temporário + rename para não corromper o JSON.
+- Anexos (imagens e arquivos) ficam em `%APPDATA%\Notas\anexos\<8 caracteres aleatórios>-<nome>`. A nota guarda só o endereço `notas://anexos/<arquivo>`, servido pelo `protocol.handle` em `main.cjs`.
+- Imagens viram `<img src="notas://...">`; outros arquivos viram `<div data-attachment data-src data-name data-size>`, que abre com duplo clique (`shell.openPath`).
+- Uma nota só é "vazia" (e some ao trocar de nota) se não tiver texto, imagem, anexo nem tabela (`isBlank` em `notes.js`).
+- Ainda não apagamos os arquivos da pasta `anexos` quando a nota é apagada. Limpar anexos órfãos é uma melhoria pendente.
 - Não existe nuvem nem conta. Sincronização seria um recurso novo.
 
 ## Comandos
@@ -53,7 +67,8 @@ A comunicação interface ↔ disco é feita por IPC: `window.notesApi.save(data
 npm install
 npm run dev     # Vite em localhost:5173 + Electron com recarga automática
 npm start       # build do frontend e abre o app
-npm run dist    # gera o instalador em release/ (não publica)
+npm test        # testes unitários (Vitest)
+npm run dist    # roda os testes e gera o instalador em release/ (não publica)
 npm run icon    # regenera icon.ico e icon.png depois de editar build/icon.svg
 ```
 
@@ -66,11 +81,11 @@ npm version patch          # 1.0.0 → 1.0.1, faz commit e cria a tag v1.0.1
 git push --follow-tags     # envia o commit e a tag
 ```
 
-Quando a tag `v*` chega no GitHub, o workflow `Release` roda numa máquina Windows, gera `Notas-Setup.exe` com o electron-builder (`--publish never`) e depois usa o `gh` para criar a release (se ainda não existir) e anexar o `.exe`, o `.blockmap` e o `latest.yml`, repetindo até 5 vezes se a API do GitHub devolver erro 500. Se o job falhar mesmo assim, use "Re-run failed jobs" no Actions: ele continua de onde parou.
+Quando a tag `v*` chega no GitHub, o workflow `Release` primeiro roda o `test.yml` (testes + build). **Se algum teste falhar, o release não começa e nada é publicado.** Se passarem, ele roda numa máquina Windows, gera `Notas-Setup.exe` com o electron-builder (`--publish never`) e depois usa o `gh` para criar a release (se ainda não existir) e anexar o `.exe`, o `.blockmap` e o `latest.yml`, repetindo até 5 vezes se a API do GitHub devolver erro 500. Se o job falhar mesmo assim, use "Re-run failed jobs" no Actions: ele continua de onde parou.
 
 O instalador tem nome fixo, sem versão (`artifactName` em `package.json`), para que o link https://github.com/lucasbrito0611/bloco-notas-mac/releases/latest/download/Notas-Setup.exe sempre baixe a versão mais recente. Não coloque a versão de volta no nome. O texto de instruções no topo de cada release vem de `.github/release-notes.md`; as notas do que mudou são geradas automaticamente abaixo dele.
 
-Os apps já instalados leem o `latest.yml` ao abrir, baixam a versão nova em segundo plano e instalam quando o app é fechado (`autoUpdater.checkForUpdatesAndNotify()` em `main.cjs`, só quando `app.isPackaged`).
+Os apps já instalados leem o `latest.yml` ao abrir e baixam a versão nova em segundo plano (`setupUpdates` em `main.cjs`, só quando `app.isPackaged`). Enquanto baixa, a barra lateral mostra "Baixando atualização… X%"; quando termina, mostra "Versão X pronta" com o botão **Reiniciar**. Se o usuário não clicar, a versão nova é instalada quando o app fechar. Até a v1.0.2 o app usava `checkForUpdatesAndNotify()`, que só mostra uma notificação do Windows, sem o aviso na barra lateral.
 
 Use `minor` para recursos novos e `patch` para correções. A versão do `package.json` precisa bater com a tag, por isso use sempre `npm version` em vez de criar a tag na mão.
 
@@ -83,7 +98,13 @@ Use `minor` para recursos novos e `patch` para correções. A versão do `packag
 - **Não copie o ícone da Apple.** O ícone é um desenho próprio, porque o original é marca registrada.
 - **Aviso do SmartScreen.** O instalador não tem assinatura digital, então o Windows mostra "O Windows protegeu o computador" na primeira execução ("Mais informações" → "Executar assim mesmo"). Resolver isso exige um certificado pago.
 - **Notas vazias somem** ao trocar de nota, como no Mac. Isso é intencional (`selectNote` e `newNote` em `App.jsx`).
+- **Comandos de tabela, um por vez.** `addRowAfter`, `addColumnAfter` etc. não funcionam encadeados na mesma `chain()` (as posições ficam desatualizadas e dá "Position out of range"). Rode um comando por chamada.
+- **Testar o app sem mexer nas notas de verdade.** O app instalado e o `npm start` usam a mesma pasta `%APPDATA%\Notas`. Para testes, defina `NOTAS_DATA_DIR` com outra pasta (veja `main.cjs`).
 - **Não deixe o electron-builder publicar sozinho** (`--publish always`). Ele envia os arquivos em paralelo, cada envio tenta criar a release e um deles quebra com "Unexpected end of JSON input". Por isso o workflow gera com `--publish never` e publica com `gh release create`.
+
+## Próximos passos
+
+A lista fica no [README.md](README.md), na seção "Próximos passos". Ao terminar um item, marque com `[x]` lá.
 
 ## Convenções
 

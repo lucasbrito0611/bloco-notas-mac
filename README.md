@@ -24,13 +24,15 @@ Decidi construir o meu próprio. Este projeto recria a experiência do Notas do 
 - **A primeira linha vira o título** da nota automaticamente.
 - **Salvamento automático**, sem botão de salvar e sem arquivos soltos.
 - **Checklist** com as bolinhas amarelas do Notas.
+- **Imagens e anexos**: dá para colar um print, arrastar uma foto ou anexar qualquer arquivo pelo clipe. Imagens aparecem dentro da nota; PDFs e outros arquivos viram um cartão que abre com dois cliques.
+- **Tabelas**, com opções para adicionar e apagar linhas e colunas.
 - **Formatação**: título, cabeçalho, subcabeçalho, listas, negrito, itálico, sublinhado, tachado e texto monoespaçado.
 - **Pastas** para organizar (criar, renomear e apagar).
 - **Busca** que ignora acentos.
 - **Notas fixadas** no topo e lista agrupada por data (Hoje, Ontem, 7 dias…).
 - **Visual nativo do Windows 11**, com o efeito Mica na barra lateral e tema claro/escuro automático.
 
-As notas ficam só no meu computador, em `%APPDATA%\Notas\notes.json`. Não tem conta, nuvem nem internet.
+As notas ficam só no meu computador, em `%APPDATA%\Notas\notes.json`, e os anexos na pasta `%APPDATA%\Notas\anexos`. Não tem conta, nuvem nem internet.
 
 ## Como foi feito
 
@@ -45,7 +47,10 @@ Eu venho do desenvolvimento web, então escolhi uma stack em que eu reaproveito 
 electron/main.cjs     → cria a janela e salva as notas no disco (o "backend" local)
 electron/preload.cjs  → a ponte segura entre a interface e o disco
 src/App.jsx           → a interface: pastas, lista de notas e editor
+src/notes.js          → a lógica das notas (títulos, datas, busca, pastas)
+src/editor/           → as extensões do editor (tabelas, imagens, anexos)
 src/styles.css        → o visual
+tests/                → os testes automáticos
 build/icon.svg        → o ícone do app
 ```
 
@@ -68,6 +73,12 @@ npm install
 npm start
 ```
 
+Para rodar os testes:
+
+```bash
+npm test
+```
+
 Para desenvolver com recarga automática:
 
 ```bash
@@ -86,7 +97,7 @@ npm run dev
 
 ## Como eu lanço uma versão nova
 
-Cada versão vira um instalador automaticamente pelo GitHub Actions:
+Cada versão vira um instalador automaticamente pelo GitHub Actions. Antes de gerar o instalador, ele roda os testes: se algum falhar, nada é publicado.
 
 ```bash
 npm version patch
@@ -104,8 +115,8 @@ O ícone fica em `build/icon.svg`. Depois de editar, rode `npm run icon` para ge
 ## Próximos passos
 
 - [x] Instalador `.exe` com atualização automática
-- [ ] Imagens e anexos nas notas
-- [ ] Tabelas
+- [x] Imagens e anexos nas notas
+- [x] Tabelas
 - [ ] Lixeira ("Apagadas Recentemente")
 - [ ] Sincronização entre computadores
 
