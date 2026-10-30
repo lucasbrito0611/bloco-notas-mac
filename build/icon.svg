@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="band" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFE36B"/>
+      <stop offset="1" stop-color="#F7C21A"/>
+    </linearGradient>
+    <linearGradient id="paper" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#F1F1F1"/>
+    </linearGradient>
+    <linearGradient id="shade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#000" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#000" stop-opacity="0"/>
+    </linearGradient>
+    <clipPath id="body">
+      <rect x="64" y="64" width="896" height="896" rx="200"/>
+    </clipPath>
+  </defs>
+
+  <g clip-path="url(#body)">
+    <rect x="64" y="64" width="896" height="896" fill="url(#paper)"/>
+    <rect x="64" y="64" width="896" height="250" fill="url(#band)"/>
+    <!-- sombra suave onde a faixa encontra o papel -->
+    <rect x="64" y="314" width="896" height="34" fill="url(#shade)"/>
+    <!-- picote -->
+    <line x1="64" y1="316" x2="960" y2="316" stroke="#C99A00" stroke-width="10" stroke-dasharray="22 16" stroke-opacity="0.55"/>
+    <!-- pauta -->
+    <g stroke="#D6D6D6" stroke-width="12" stroke-linecap="round">
+      <line x1="150" y1="470" x2="874" y2="470"/>
+      <line x1="150" y1="600" x2="874" y2="600"/>
+      <line x1="150" y1="730" x2="874" y2="730"/>
+      <line x1="150" y1="860" x2="874" y2="860"/>
+    </g>
+  </g>
+  <rect x="64" y="64" width="896" height="896" rx="200" fill="none" stroke="#000" stroke-opacity="0.08" stroke-width="4"/>
+</svg>
