@@ -28,12 +28,14 @@ jobs:
         run: npx electron-builder --win --publish never
 
       # O latest.yml é o arquivo que o electron-updater lê nos apps instalados para achar a versão nova.
+      # Cria a release só se ainda não existir e repete o envio, porque a API do GitHub às vezes devolve 500.
       - name: Publicar no GitHub Releases
         shell: bash
         run: |
-          gh release create "$GITHUB_REF_NAME" \
-            --title "Notas $GITHUB_REF_NAME" \
-            --generate-notes \
+          retry() { for i in 1 2 3 4 5; do "$@" && return 0; echo "Falhou, tentando de novo ($i)..."; sleep $((i * 10)); done; return 1; }
+          gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1 ||
+            retry gh release create "$GITHUB_REF_NAME" --title "Notas $GITHUB_REF_NAME" --generate-notes --verify-tag
+          retry gh release upload "$GITHUB_REF_NAME" --clobber \
             release/Notas-Setup-*.exe \
             release/Notas-Setup-*.exe.blockmap \
             release/latest.yml

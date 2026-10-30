@@ -66,7 +66,7 @@ npm version patch          # 1.0.0 → 1.0.1, faz commit e cria a tag v1.0.1
 git push --follow-tags     # envia o commit e a tag
 ```
 
-Quando a tag `v*` chega no GitHub, o workflow `Release` roda numa máquina Windows, gera `Notas-Setup-<versão>.exe` com o electron-builder (`--publish never`) e depois cria a release com o `gh`, anexando o `.exe`, o `.blockmap` e o `latest.yml`.
+Quando a tag `v*` chega no GitHub, o workflow `Release` roda numa máquina Windows, gera `Notas-Setup-<versão>.exe` com o electron-builder (`--publish never`) e depois usa o `gh` para criar a release (se ainda não existir) e anexar o `.exe`, o `.blockmap` e o `latest.yml`, repetindo até 5 vezes se a API do GitHub devolver erro 500. Se o job falhar mesmo assim, use "Re-run failed jobs" no Actions: ele continua de onde parou.
 
 Os apps já instalados leem o `latest.yml` ao abrir, baixam a versão nova em segundo plano e instalam quando o app é fechado (`autoUpdater.checkForUpdatesAndNotify()` em `main.cjs`, só quando `app.isPackaged`).
 
