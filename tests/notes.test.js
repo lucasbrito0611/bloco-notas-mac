@@ -23,6 +23,8 @@ import {
   purgeTrash,
   daysLeft,
   attachmentUrls,
+  mergeData,
+  importMessage,
 } from '../src/notes.js'
 
 const NOW = new Date(2026, 9, 30, 15, 0).getTime()
@@ -193,5 +195,53 @@ describe('anexos usados pelas notas', () => {
       note({ html: '<p>sem anexos</p>' }),
     ]
     expect(attachmentUrls(notes).sort()).toEqual(['notas://anexos/a1-foto.png', 'notas://anexos/b2-doc.pdf'])
+  })
+})
+
+describe('importar notas de um arquivo .notas', () => {
+  const folders = [{ id: DEFAULT_FOLDER, name: 'Notas' }]
+
+  it('adiciona as notas que ainda não existem e mantém as atuais', () => {
+    const current = { folders, notes: [note({ id: 'a', text: 'Daqui' })] }
+    const imported = { folders, notes: [note({ id: 'b', text: 'De lá' })] }
+    const { data, added, updated } = mergeData(current, imported)
+    expect(data.notes.map((n) => n.id)).toEqual(['a', 'b'])
+    expect([added, updated]).toEqual([1, 0])
+  })
+
+  it('na mesma nota dos dois lados, fica a que mudou por último', () => {
+    const current = { folders, notes: [note({ id: 'a', text: 'antiga', updatedAt: NOW - DAY }), note({ id: 'b', text: 'nova aqui' })] }
+    const imported = { folders, notes: [note({ id: 'a', text: 'nova lá' }), note({ id: 'b', text: 'antiga lá', updatedAt: NOW - DAY })] }
+    const { data, added, updated } = mergeData(current, imported)
+    expect(data.notes.map((n) => n.text)).toEqual(['nova lá', 'nova aqui'])
+    expect([added, updated]).toEqual([0, 1])
+  })
+
+  it('mandar para o lixo conta como mudança', () => {
+    const current = { folders, notes: [note({ id: 'a', deletedAt: NOW + 1000 })] }
+    const imported = { folders, notes: [note({ id: 'a' })] }
+    expect(mergeData(current, imported).data.notes[0].deletedAt).toBe(NOW + 1000)
+  })
+
+  it('junta pastas com o mesmo id ou o mesmo nome e cria as que faltam', () => {
+    const current = { folders: [...folders, { id: 'f1', name: 'Trabalho' }], notes: [] }
+    const imported = {
+      folders: [...folders, { id: 'f2', name: ' trabalho ' }, { id: 'f3', name: 'Viagem' }],
+      notes: [note({ id: 'a', folderId: 'f2' }), note({ id: 'b', folderId: 'f3' }), note({ id: 'c', folderId: 'sumiu' })],
+    }
+    const { data } = mergeData(current, imported)
+    expect(data.folders.map((f) => f.name)).toEqual(['Notas', 'Trabalho', 'Viagem'])
+    expect(data.notes.map((n) => n.folderId)).toEqual(['f1', 'f3', DEFAULT_FOLDER])
+  })
+
+  it('ignora notas sem id ou sem texto', () => {
+    const imported = { folders, notes: [null, { id: 'x' }, note({ id: 'ok' })] }
+    expect(mergeData({ folders, notes: [] }, imported).data.notes.map((n) => n.id)).toEqual(['ok'])
+  })
+
+  it('resume o que foi importado', () => {
+    expect(importMessage({ added: 0, updated: 0 })).toMatch(/Nenhuma novidade/)
+    expect(importMessage({ added: 1, updated: 0 })).toBe('Importação concluída: 1 nota nova.')
+    expect(importMessage({ added: 3, updated: 2 })).toBe('Importação concluída: 3 notas novas e 2 notas atualizadas.')
   })
 })

@@ -1,9 +1,10 @@
-const { app, BrowserWindow, ipcMain, nativeTheme, protocol, net, shell } = require('electron')
+const { app, BrowserWindow, ipcMain, nativeTheme, protocol, net, shell, dialog } = require('electron')
 const { autoUpdater } = require('electron-updater')
 const path = require('node:path')
 const fs = require('node:fs')
 const { pathToFileURL } = require('node:url')
 const attachments = require('./attachments.cjs')
+const backup = require('./backup.cjs')
 
 const isDev = process.argv.includes('--dev')
 
@@ -51,6 +52,34 @@ function cleanupAttachments(referencedUrls) {
     .filter((name) => fs.statSync(path.join(attachmentsDir(), name)).mtimeMs < oneHourAgo)
   for (const name of orphans) fs.rmSync(path.join(attachmentsDir(), name), { force: true })
   return orphans.length
+}
+
+// ---------- exportar e importar (arquivo .notas) ----------
+
+const backupFilter = { name: 'Backup do Notas', extensions: [backup.EXTENSION] }
+
+// Devolve false se o usuário cancelar a janela de salvar.
+async function exportNotes(data, referencedUrls) {
+  const today = new Date().toLocaleDateString('sv-SE') // 2026-10-30
+  const { canceled, filePath } = await dialog.showSaveDialog(win, {
+    title: 'Exportar notas',
+    defaultPath: path.join(app.getPath('documents'), `Notas ${today}.${backup.EXTENSION}`),
+    filters: [backupFilter],
+  })
+  if (canceled || !filePath) return false
+  backup.writeBackup(filePath, data, attachmentsDir(), referencedUrls)
+  return true
+}
+
+// Devolve null se o usuário cancelar; senão, as notas do arquivo (a interface junta com as atuais).
+async function importNotes() {
+  const { canceled, filePaths } = await dialog.showOpenDialog(win, {
+    title: 'Importar notas',
+    filters: [backupFilter],
+    properties: ['openFile'],
+  })
+  if (canceled || !filePaths[0]) return null
+  return backup.readBackup(filePaths[0], attachmentsDir())
 }
 
 // notas://anexos/<arquivo> funciona como um "servidor de arquivos" local para as imagens e anexos das notas.
@@ -137,6 +166,8 @@ function setupUpdates() {
 
 ipcMain.handle('notes:load', () => loadData())
 ipcMain.handle('notes:save', (_e, data) => saveData(data))
+ipcMain.handle('notes:export', (_e, data, referencedUrls) => exportNotes(data, referencedUrls))
+ipcMain.handle('notes:import', () => importNotes())
 ipcMain.handle('attachments:save', (_e, file) => saveAttachment(file))
 ipcMain.handle('attachments:cleanup', (_e, referencedUrls) => cleanupAttachments(referencedUrls))
 ipcMain.handle('attachments:open', (_e, url) => {

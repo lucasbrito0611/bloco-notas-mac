@@ -139,6 +139,51 @@ export function attachmentUrls(notes) {
   return [...urls]
 }
 
+// ---------- importar (arquivo .notas) ----------
+
+// Último momento em que a nota mudou: editar muda o updatedAt; mandar para o lixo, o deletedAt.
+const lastChange = (n) => Math.max(n.updatedAt || 0, n.deletedAt || 0)
+
+// Junta as notas de um backup com as atuais, sem perder nada:
+// - nota que não existe aqui entra; se a mesma nota existe dos dois lados, fica a que mudou por último;
+// - pasta com o mesmo id ou o mesmo nome vira uma só; nota cuja pasta não existe vai para "Notas".
+export function mergeData(current, imported) {
+  const folders = [...current.folders]
+  const folderIds = new Map() // id da pasta no backup → id da pasta aqui
+  for (const f of imported.folders) {
+    const same = folders.find((x) => x.id === f.id) || folders.find((x) => normalize(x.name.trim()) === normalize(String(f.name).trim()))
+    if (same) folderIds.set(f.id, same.id)
+    else {
+      folders.push({ id: f.id, name: f.name })
+      folderIds.set(f.id, f.id)
+    }
+  }
+
+  const notes = new Map(current.notes.map((n) => [n.id, n]))
+  let added = 0
+  let updated = 0
+  for (const n of imported.notes) {
+    if (typeof n?.id !== 'string' || typeof n.text !== 'string') continue
+    const note = { ...n, html: n.html || '', folderId: folderIds.get(n.folderId) ?? DEFAULT_FOLDER }
+    const existing = notes.get(n.id)
+    if (!existing) added++
+    else if (lastChange(note) > lastChange(existing)) updated++
+    else continue
+    notes.set(n.id, note)
+  }
+  return { data: { folders, notes: [...notes.values()] }, added, updated }
+}
+
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`
+
+export function importMessage({ added, updated }) {
+  if (!added && !updated) return 'Nenhuma novidade: todas as notas desse arquivo já estavam aqui.'
+  const parts = []
+  if (added) parts.push(plural(added, 'nota nova', 'notas novas'))
+  if (updated) parts.push(plural(updated, 'nota atualizada', 'notas atualizadas'))
+  return `Importação concluída: ${parts.join(' e ')}.`
+}
+
 // Apagar uma pasta move as notas dela para a pasta padrão, que nunca é apagada.
 export function removeFolder(data, folderId) {
   if (folderId === DEFAULT_FOLDER) return data

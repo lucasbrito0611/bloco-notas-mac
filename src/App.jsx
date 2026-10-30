@@ -26,6 +26,8 @@ import {
   purgeTrash,
   daysLeft,
   attachmentUrls,
+  mergeData,
+  importMessage,
 } from './notes.js'
 
 // ---------- ícones ----------
@@ -41,6 +43,8 @@ const ICONS = {
   newFolder: 'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM12 10v6M9 13h6',
   search: 'M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4',
   sidebar: 'M4 5h16v14H4zM9 5v14',
+  export: 'M12 15V4M8 8l4-4 4 4M5 14v5h14v-5',
+  import: 'M12 4v11M8 11l4 4 4-4M5 14v5h14v-5',
 }
 
 function Icon({ name, size = 18 }) {
@@ -197,8 +201,9 @@ function NoteEditor({ note, onChange, onTogglePin, onRestore, editorRef }) {
     return () => (editorRef.current = null)
   }, [editor, editorRef])
 
+  // O false evita o evento "update": sem ele, só abrir a nota mudaria a data de edição dela.
   useEffect(() => {
-    editor?.setEditable(!inTrash)
+    editor?.setEditable(!inTrash, false)
   }, [editor, inTrash])
 
   if (!editor) return null
@@ -322,6 +327,9 @@ function UpdateModal({ update, currentVersion, onAccept, onDismiss, onClose }) {
 
 // ---------- app ----------
 
+// O Electron embrulha os erros do processo principal ("Error invoking remote method..."); fica só a mensagem.
+const ipcError = (err) => String(err?.message || err).replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
+
 export default function App() {
   const [data, setData] = useState(null)
   const [folderId, setFolderId] = useState(ALL)
@@ -331,6 +339,8 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [update, dispatchUpdate] = useReducer(updateReducer, initialUpdate)
   const [currentVersion, setCurrentVersion] = useState('')
+  // Muda a cada importação, para o editor recarregar a nota aberta se ela veio atualizada no arquivo.
+  const [imports, setImports] = useState(0)
   const searchRef = useRef(null)
   const editorRef = useRef(null)
   const dataRef = useRef(null)
@@ -437,6 +447,32 @@ export default function App() {
     setNoteId(filterNotes(data.notes)[0]?.id ?? null)
   }
 
+  const exportAll = async () => {
+    try {
+      await window.notesApi.exportNotes(dataRef.current, attachmentUrls(dataRef.current.notes))
+    } catch (err) {
+      alert(`Não foi possível exportar as notas.\n\n${ipcError(err)}`)
+    }
+  }
+
+  // Junta as notas do arquivo com as atuais (veja mergeData); o salvamento automático grava o resultado.
+  const importAll = async () => {
+    let imported
+    try {
+      imported = await window.notesApi.importNotes()
+    } catch (err) {
+      alert(`Não foi possível importar as notas.\n\n${ipcError(err)}`)
+      return
+    }
+    if (!imported) return
+    const result = mergeData(dataRef.current, imported)
+    const next = purgeTrash(result.data)
+    setData(next)
+    setImports((n) => n + 1)
+    setNoteId((id) => id ?? filterNotes(next.notes)[0]?.id ?? null)
+    alert(importMessage(result))
+  }
+
   const newFolder = useCallback(() => {
     const f = { id: uid(), name: 'Nova Pasta' }
     setData((d) => ({ ...d, folders: [...d.folders, f] }))
@@ -517,6 +553,15 @@ export default function App() {
           <button className="new-folder" onClick={newFolder}>
             <Icon name="newFolder" size={17} /> Nova Pasta
           </button>
+          {/* Para levar as notas para outro computador: exporta um arquivo .notas e importa do outro lado. */}
+          <div className="backup-actions">
+            <button title="Salvar todas as notas num arquivo .notas" onClick={exportAll}>
+              <Icon name="export" size={16} /> Exportar
+            </button>
+            <button title="Trazer as notas de um arquivo .notas" onClick={importAll}>
+              <Icon name="import" size={16} /> Importar
+            </button>
+          </div>
         </aside>
       )}
 
@@ -578,7 +623,7 @@ export default function App() {
       <main className="editor-pane">
         {note ? (
           <NoteEditor
-            key={note.id}
+            key={`${note.id}-${imports}`}
             note={note}
             editorRef={editorRef}
             onChange={(html, text) => updateNote(note.id, { html, text, updatedAt: Date.now() })}

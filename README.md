@@ -29,6 +29,7 @@ Decidi construir o meu próprio. Este projeto recria a experiência do Notas do 
 - **Formatação**: título, cabeçalho, subcabeçalho, listas, negrito, itálico, sublinhado, tachado e texto monoespaçado.
 - **Pastas** para organizar (criar, renomear e apagar).
 - **Apagadas Recentemente**: nota apagada vai para a lixeira, de onde dá para recuperar. Depois de 30 dias ela some de vez, junto com os anexos.
+- **Exportar e importar**: os botões no pé da barra lateral salvam todas as notas (com imagens e anexos) num arquivo `.notas`. No outro computador, é só importar esse arquivo: as notas novas entram e, se a mesma nota existir dos dois lados, fica a versão editada por último. Para levar o arquivo, uso o Google Drive, um e-mail ou um pendrive. Também serve de backup.
 - **Busca** que ignora acentos.
 - **Notas fixadas** no topo e lista agrupada por data (Hoje, Ontem, 7 dias…).
 - **Visual nativo do Windows 11**, com o efeito Mica na barra lateral e tema claro/escuro automático.
@@ -119,6 +120,7 @@ O ícone fica em `build/icon.svg`. Depois de editar, rode `npm run icon` para ge
 - [x] Imagens e anexos nas notas
 - [x] Tabelas
 - [x] Lixeira ("Apagadas Recentemente")
+- [x] Exportar e importar as notas num arquivo `.notas`
 - [ ] Sincronização entre computadores
 
 ---

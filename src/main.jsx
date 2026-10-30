@@ -17,6 +17,9 @@ if (!window.notesApi) {
       })
       return { url, name, size: bytes.byteLength, mime: type }
     },
+    // Exportar e importar só existem no app de verdade (precisam das janelas de arquivo do Windows).
+    exportNotes: async () => alert('Exportar só funciona no app instalado.'),
+    importNotes: async () => (alert('Importar só funciona no app instalado.'), null),
     openAttachment: async (url) => window.open(url),
     cleanupAttachments: async () => 0,
     version: async () => 'web',

@@ -3,7 +3,9 @@ const { contextBridge, ipcRenderer } = require('electron')
 contextBridge.exposeInMainWorld('notesApi', {
   load: () => ipcRenderer.invoke('notes:load'),
   save: (data) => ipcRenderer.invoke('notes:save', data),
-  saveAttachment: (file) => ipcRenderer.invoke('attachments:save', file),
+  exportNotes: (data, referencedUrls) => ipcRenderer.invoke('notes:export', data, referencedUrls),
+  importNotes: () => ipcRenderer.invoke('notes:import'),
+  saveAttachment:(file) => ipcRenderer.invoke('attachments:save', file),
   openAttachment: (url) => ipcRenderer.invoke('attachments:open', url),
   cleanupAttachments: (referencedUrls) => ipcRenderer.invoke('attachments:cleanup', referencedUrls),
   version: () => ipcRenderer.invoke('app:version'),

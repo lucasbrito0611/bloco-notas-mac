@@ -29,6 +29,7 @@ Escolhemos Electron em vez de Tauri porque é tudo JavaScript e não exige Rust 
 electron/main.cjs         processo principal: janela, notes.json, anexos, protocolo notas:// e atualizações
 electron/preload.cjs      ponte segura (contextBridge) que expõe window.notesApi para a interface
 electron/attachments.cjs  nomes de arquivo e conversão notas://anexos/<arquivo> → caminho (sem Electron, testável)
+electron/backup.cjs       gera e lê o arquivo .notas de exportar/importar (sem Electron, testável)
 src/App.jsx               a interface: pastas, lista de notas, editor, menus e aviso de atualização
 src/notes.js              lógica pura das notas: título, prévia, nota vazia, datas, busca, grupos, pastas, lixeira
 src/updates.js            estados do fluxo de atualização (modal, botão, download, instalação)
@@ -45,7 +46,7 @@ build/make-icon.cjs       gera build/icon.ico e build/icon.png a partir do SVG
 
 A comunicação interface ↔ disco é feita por IPC: `window.notesApi.save(data)` → `ipcMain.handle('notes:save')`. É o equivalente local de um `fetch` para uma API.
 
-API exposta em `window.notesApi`: `load`, `save`, `saveAttachment({ name, type, bytes })`, `openAttachment(url)`, `cleanupAttachments(urlsEmUso)`, `version`, `getUpdate`, `downloadUpdate`, `installUpdate`, `onUpdate(callback)`.
+API exposta em `window.notesApi`: `load`, `save`, `saveAttachment({ name, type, bytes })`, `openAttachment(url)`, `cleanupAttachments(urlsEmUso)`, `exportNotes(data, urlsEmUso)`, `importNotes()`, `version`, `getUpdate`, `downloadUpdate`, `installUpdate`, `onUpdate(callback)`.
 
 Coloque lógica nova que não dependa de React ou Electron em `src/notes.js` (ou em `electron/attachments.cjs`, se for do lado do disco) e escreva testes para ela.
 
@@ -70,6 +71,16 @@ Coloque lógica nova que não dependa de React ou Electron em `src/notes.js` (ou
 - No lixo, o botão de lixeira apaga de vez (`deleteForever`), com confirmação. "Esvaziar" apaga todas (`emptyTrash`).
 - Ao abrir o app, `purgeTrash` apaga de vez o que está no lixo há mais de 30 dias (`TRASH_DAYS`).
 - Apagar uma pasta continua movendo as notas dela para "Notas", e não para o lixo.
+
+### Exportar e importar (arquivo `.notas`)
+
+É o jeito de levar as notas para outro computador, sem conta nem nuvem. Os botões ficam no pé da barra lateral.
+
+- O `.notas` é um `.zip` (biblioteca `adm-zip`) com o `notes.json` e a pasta `anexos/`, só com os anexos que alguma nota usa. Gerado e lido em `electron/backup.cjs`.
+- Importar copia os anexos para a pasta `anexos` (sem sobrescrever os que já existem, porque o nome tem prefixo aleatório e é o mesmo arquivo) e devolve as notas para a interface, que junta com as atuais usando `mergeData` em `notes.js`.
+- `mergeData`: nota que não existe aqui entra; se a mesma nota (mesmo `id`) existe dos dois lados, fica a que mudou por último (o maior entre `updatedAt` e `deletedAt`). Pastas com o mesmo id ou o mesmo nome viram uma só; nota de pasta inexistente vai para "Notas".
+- Importar nunca apaga nada. Uma nota apagada de vez aqui volta se estiver no arquivo importado.
+- Depois de importar, o editor é recriado (`key` com o contador `imports`) para mostrar a versão nova da nota aberta.
 
 ### Limpeza de anexos
 
@@ -126,6 +137,7 @@ Use `minor` para recursos novos e `patch` para correções. A versão do `packag
 - **Não copie o ícone da Apple.** O ícone é um desenho próprio, porque o original é marca registrada.
 - **Aviso do SmartScreen.** O instalador não tem assinatura digital, então o Windows mostra "O Windows protegeu o computador" na primeira execução ("Mais informações" → "Executar assim mesmo"). Resolver isso exige um certificado pago.
 - **Notas vazias somem** ao trocar de nota, como no Mac. Isso é intencional (`selectNote` e `newNote` em `App.jsx`).
+- **`setEditable` dispara o `onUpdate`.** No TipTap, `editor.setEditable(x)` emite o evento `update`, e o `onUpdate` do app grava `updatedAt = agora`. Use sempre `setEditable(x, false)`. Na v1.3.0 isso fazia toda nota aberta pular para "Hoje", e com a importação faria uma nota só vista "ganhar" de uma editada de verdade.
 - **Comandos de tabela, um por vez.** `addRowAfter`, `addColumnAfter` etc. não funcionam encadeados na mesma `chain()` (as posições ficam desatualizadas e dá "Position out of range"). Rode um comando por chamada.
 - **Testar o app sem mexer nas notas de verdade.** O app instalado e o `npm start` usam a mesma pasta `%APPDATA%\Notas`. Para testes, defina `NOTAS_DATA_DIR` com outra pasta (veja `main.cjs`).
 - **Não deixe o electron-builder publicar sozinho** (`--publish always`). Ele envia os arquivos em paralelo, cada envio tenta criar a release e um deles quebra com "Unexpected end of JSON input". Por isso o workflow gera com `--publish never` e publica com `gh release create`.
