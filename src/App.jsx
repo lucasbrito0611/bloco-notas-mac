@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useReducer, useRef, useState } 
 import { useEditor, EditorContent } from '@tiptap/react'
 import { buildExtensions, nodeForAttachment } from './editor/extensions.js'
 import { initialUpdate, updateReducer, showUpdateModal, showUpdateButton } from './updates.js'
+import { useListMotion, collapse } from './motion.js'
 import appIcon from '../build/icon.png'
 import {
   ALL,
@@ -343,6 +344,9 @@ export default function App() {
   const [imports, setImports] = useState(0)
   const searchRef = useRef(null)
   const editorRef = useRef(null)
+  const listRef = useRef(null)
+  // Enquanto a nota apagada está recolhendo, ignora novos cliques na lixeira.
+  const deletingRef = useRef(false)
   const dataRef = useRef(null)
   dataRef.current = data
 
@@ -424,14 +428,24 @@ export default function App() {
   }, [])
 
   // Fora do lixo, apagar manda a nota para "Apagadas Recentemente". Dentro dele, apaga de vez.
+  // Primeiro a nota recolhe na lista; só depois sai dos dados.
   const deleteNote = useCallback(() => {
-    if (!note) return
+    if (!note || deletingRef.current) return
     if (note.deletedAt && !confirm(`Apagar "${titleOf(note)}" permanentemente? Essa ação não pode ser desfeita.`)) return
-    const idx = visibleNotes.findIndex((n) => n.id === note.id)
-    const next = visibleNotes[idx + 1] || visibleNotes[idx - 1]
-    if (note.deletedAt) removeForever((d) => deleteForever(d, note.id))
-    else setData((d) => moveToTrash(d, note.id))
-    setNoteId(next?.id ?? null)
+    const { id, deletedAt } = note
+    const idx = visibleNotes.findIndex((n) => n.id === id)
+    const nextId = (visibleNotes[idx + 1] || visibleNotes[idx - 1])?.id ?? null
+    // Se for a única nota do grupo ("Hoje", "Ontem"...), recolhe o grupo inteiro, com o título junto.
+    const row = listRef.current?.querySelector(`[data-flip="${CSS.escape(id)}"]`)
+    const group = row?.parentElement
+    deletingRef.current = true
+    collapse(group?.querySelectorAll('.note-item').length === 1 ? group : row).then(() => {
+      deletingRef.current = false
+      if (deletedAt) removeForever((d) => deleteForever(d, id))
+      else setData((d) => moveToTrash(d, id))
+      // Se a pessoa clicou em outra nota durante a animação, fica nela.
+      setNoteId((cur) => (cur === id ? nextId : cur))
+    })
   }, [note, visibleNotes, removeForever])
 
   const restore = (id) => {
@@ -486,6 +500,9 @@ export default function App() {
     setData((d) => removeFolder(d, f.id))
     if (folderId === f.id) setFolderId(ALL)
   }
+
+  // Anima a lista quando notas mudam de lugar (fixar, editar, apagar). Trocar de pasta ou buscar não anima.
+  useListMotion(listRef, `${folderId}|${query}`)
 
   // atalhos
   useEffect(() => {
@@ -542,8 +559,9 @@ export default function App() {
 
   return (
     <div className={`app ${sidebarOpen ? '' : 'no-sidebar'}`}>
-      {sidebarOpen && (
-        <aside className="sidebar">
+      {/* Fica sempre montada para poder deslizar; fechada, o inert tira os botões do alcance do Tab. */}
+      <aside className="sidebar" inert={sidebarOpen ? undefined : ''}>
+        <div className="sidebar-inner">
           <div className="sidebar-top drag" />
           <div className="section-label">No Computador</div>
           {folderRow({ id: ALL, name: 'Todas as Notas' }, false)}
@@ -562,8 +580,8 @@ export default function App() {
               <Icon name="import" size={16} /> Importar
             </button>
           </div>
-        </aside>
-      )}
+        </div>
+      </aside>
 
       <section className="list">
         <header className="list-bar drag">
@@ -590,7 +608,8 @@ export default function App() {
           <Icon name="search" size={15} />
           <input ref={searchRef} placeholder="Buscar" value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => e.key === 'Escape' && setQuery('')} />
         </div>
-        <div className="notes">
+        {/* A key recria a lista ao trocar de pasta: ela entra com um fade e volta para o topo. */}
+        <div className="notes" key={folderId} ref={listRef}>
           {inTrashFolder && trashCount > 0 && (
             <div className="trash-info">
               <span>As notas ficam aqui por {TRASH_DAYS} dias antes de serem apagadas de vez.</span>
@@ -599,9 +618,13 @@ export default function App() {
           )}
           {grouped.map(([group, notes]) => (
             <div key={group || 'lixo'}>
-              {group && <div className="group-label">{group}</div>}
+              {group && (
+                <div className="group-label" data-flip={`grupo:${group}`}>
+                  {group}
+                </div>
+              )}
               {notes.map((n) => (
-                <div key={n.id} className={`note-item ${n.id === noteId ? 'sel' : ''}`} onClick={() => selectNote(n.id)}>
+                <div key={n.id} data-flip={n.id} className={`note-item ${n.id === noteId ? 'sel' : ''}`} onClick={() => selectNote(n.id)}>
                   <div className="note-title">{titleOf(n)}</div>
                   <div className="note-sub">
                     <span className="note-time">{n.deletedAt ? `${daysLeft(n)} ${daysLeft(n) === 1 ? 'dia' : 'dias'}` : shortDate(n.updatedAt)}</span>

@@ -33,6 +33,7 @@ electron/backup.cjs       gera e lê o arquivo .notas de exportar/importar (sem 
 src/App.jsx               a interface: pastas, lista de notas, editor, menus e aviso de atualização
 src/notes.js              lógica pura das notas: título, prévia, nota vazia, datas, busca, grupos, pastas, lixeira
 src/updates.js            estados do fluxo de atualização (modal, botão, download, instalação)
+src/motion.js             animações: lista que se reorganiza (FLIP) e nota que recolhe ao ser apagada
 src/editor/extensions.js  lista de extensões do TipTap, usada pelo app e pelos testes
 src/editor/attachment.js  nó "attachment" (cartão de PDF, planilha etc.)
 src/styles.css            visual, com tokens de cor em :root e tema escuro via prefers-color-scheme
@@ -136,6 +137,7 @@ Use `minor` para recursos novos e `patch` para correções. A versão do `packag
 - **Ícone da janela.** Instalado, o app usa o ícone embutido no `Notas.exe`; em desenvolvimento, aponta para `build/icon.ico`.
 - **Não copie o ícone da Apple.** O ícone é um desenho próprio, porque o original é marca registrada.
 - **Aviso do SmartScreen.** O instalador não tem assinatura digital, então o Windows mostra "O Windows protegeu o computador" na primeira execução ("Mais informações" → "Executar assim mesmo"). Resolver isso exige um certificado pago.
+- **Animações.** Tempos e curva ficam em `--motion`, `--motion-fast` e `--ease` (`:root`) e repetidos em `src/motion.js`. Apagar uma nota espera o recolhimento (~220 ms) antes de mexer nos dados. A barra lateral fica sempre montada (fechada, `width: 0` + `inert`). Itens da lista precisam de `data-flip` para animar ao mudar de lugar. Tudo respeita `prefers-reduced-motion`.
 - **Notas vazias somem** ao trocar de nota, como no Mac. Isso é intencional (`selectNote` e `newNote` em `App.jsx`).
 - **`setEditable` dispara o `onUpdate`.** No TipTap, `editor.setEditable(x)` emite o evento `update`, e o `onUpdate` do app grava `updatedAt = agora`. Use sempre `setEditable(x, false)`. Na v1.3.0 isso fazia toda nota aberta pular para "Hoje", e com a importação faria uma nota só vista "ganhar" de uma editada de verdade.
 - **Comandos de tabela, um por vez.** `addRowAfter`, `addColumnAfter` etc. não funcionam encadeados na mesma `chain()` (as posições ficam desatualizadas e dá "Position out of range"). Rode um comando por chamada.
