@@ -33,6 +33,7 @@ electron/backup.cjs       gera e lê o arquivo .notas de exportar/importar (sem 
 src/App.jsx               a interface: pastas, lista de notas, editor, menus e aviso de atualização
 src/notes.js              lógica pura das notas: título, prévia, nota vazia, datas, busca, grupos, pastas, lixeira
 src/updates.js            estados do fluxo de atualização (modal, botão, download, instalação)
+src/changelog.js          novidades de cada versão (janela "Novidades") e comparação de versões
 src/motion.js             animações: lista que se reorganiza (FLIP) e nota que recolhe ao ser apagada
 src/editor/extensions.js  lista de extensões do TipTap, usada pelo app e pelos testes
 src/editor/attachment.js  nó "attachment" (cartão de PDF, planilha etc.)
@@ -102,6 +103,8 @@ npm run icon    # regenera icon.ico e icon.png depois de editar build/icon.svg
 
 A publicação é automática e acontece **por versão, não por commit**. Commits comuns na `main` não geram instalador.
 
+Antes de tudo, escreva as novidades da versão nova no topo de `CHANGELOG` em `src/changelog.js`, para quem usa o app (não para quem programa) e faça commit. **Sem essa entrada, os testes falham e o release não sai.**
+
 ```bash
 npm version patch          # 1.0.0 → 1.0.1, faz commit e cria a tag v1.0.1
 git push --follow-tags     # envia o commit e a tag
@@ -122,6 +125,10 @@ O fluxo é o padrão dos apps de desktop (`setupUpdates` em `main.cjs`, só quan
 5. Erro no download → modal de erro com "Tentar de novo". Erro ao só verificar (ex.: sem internet) é ignorado.
 
 Como a verificação pode terminar antes de a interface abrir, o `main.cjs` guarda o último aviso e a interface o pede com `getUpdate()` ao carregar.
+
+### Janela de novidades
+
+Ao abrir, o app compara a versão atual com a última aberta (`localStorage`, chave `ultimaVersaoAberta`) e, se subiu, mostra as entradas do `CHANGELOG` entre as duas (`newsSince`). Na primeira instalação não mostra nada. O link "Notas x.y.z · Novidades", no pé da barra lateral, abre o histórico inteiro. Se o modal de atualização estiver aberto, ele tem prioridade. Para testar: no DevTools, `localStorage.setItem('ultimaVersaoAberta', '1.0.0')` e recarregue.
 
 Histórico: até a v1.0.2 o app usava `checkForUpdatesAndNotify()` (notificação do Windows e instalação ao fechar). A v1.1.0 baixava sozinha e mostrava "Reiniciar" na barra lateral. O fluxo com modal vale a partir da v1.2.0.
 

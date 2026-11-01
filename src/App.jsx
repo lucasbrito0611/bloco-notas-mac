@@ -3,6 +3,7 @@ import { useEditor, EditorContent } from '@tiptap/react'
 import { buildExtensions, nodeForAttachment } from './editor/extensions.js'
 import { initialUpdate, updateReducer, showUpdateModal, showUpdateButton } from './updates.js'
 import { useListMotion, collapse } from './motion.js'
+import { CHANGELOG, newsSince } from './changelog.js'
 import appIcon from '../build/icon.png'
 import {
   ALL,
@@ -326,6 +327,45 @@ function UpdateModal({ update, currentVersion, onAccept, onDismiss, onClose }) {
   )
 }
 
+// ---------- novidades ----------
+
+// Histórico até a versão instalada (a entrada da próxima versão pode já estar escrita no código).
+// Fora do app, sem número de versão, mostra tudo.
+const allNews = (version) => {
+  const entries = newsSince(CHANGELOG, '0.0.0', version)
+  return entries.length ? entries : CHANGELOG
+}
+
+// Aparece sozinha depois de uma atualização, com o que mudou desde a última versão aberta.
+// O link "Novidades" na barra lateral abre a mesma janela com o histórico inteiro.
+function NewsModal({ entries, title, onClose }) {
+  return (
+    <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal news" role="dialog" aria-labelledby="news-title" onKeyDown={(e) => e.key === 'Escape' && onClose()}>
+        <img className="modal-icon" src={appIcon} alt="" />
+        <h2 id="news-title">{title}</h2>
+        <div className="news-list">
+          {entries.map((e) => (
+            <section key={e.version}>
+              {entries.length > 1 && <h3>Versão {e.version}</h3>}
+              <ul>
+                {e.items.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            </section>
+          ))}
+        </div>
+        <div className="modal-actions">
+          <button className="btn primary" autoFocus onClick={onClose}>
+            Continuar
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ---------- app ----------
 
 // O Electron embrulha os erros do processo principal ("Error invoking remote method..."); fica só a mensagem.
@@ -340,6 +380,8 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [update, dispatchUpdate] = useReducer(updateReducer, initialUpdate)
   const [currentVersion, setCurrentVersion] = useState('')
+  // Janela de novidades: { title, entries } quando aberta.
+  const [news, setNews] = useState(null)
   // Muda a cada importação, para o editor recarregar a nota aberta se ela veio atualizada no arquivo.
   const [imports, setImports] = useState(0)
   const searchRef = useRef(null)
@@ -359,7 +401,14 @@ export default function App() {
       setNoteId(filterNotes(loaded.notes)[0]?.id ?? null)
       window.notesApi.cleanupAttachments(attachmentUrls(loaded.notes))
     })
-    window.notesApi.version().then(setCurrentVersion)
+    window.notesApi.version().then((version) => {
+      setCurrentVersion(version)
+      // Compara com a última versão aberta (guardada no localStorage, que o Electron salva na pasta do app
+      // em %APPDATA%) para mostrar as novidades só uma vez, logo depois de atualizar.
+      const entries = newsSince(CHANGELOG, localStorage.getItem('ultimaVersaoAberta'), version)
+      localStorage.setItem('ultimaVersaoAberta', version)
+      if (entries.length) setNews({ title: `Novidades do Notas ${version}`, entries })
+    })
     const unsubscribe = window.notesApi.onUpdate(dispatchUpdate)
     // A verificação pode ter terminado antes da interface abrir.
     window.notesApi.getUpdate().then((event) => event && dispatchUpdate(event))
@@ -580,6 +629,9 @@ export default function App() {
               <Icon name="import" size={16} /> Importar
             </button>
           </div>
+          <button className="about" title="O que mudou em cada versão" onClick={() => setNews({ title: 'Novidades', entries: allNews(currentVersion) })}>
+            Notas {currentVersion} · Novidades
+          </button>
         </div>
       </aside>
 
@@ -676,6 +728,8 @@ export default function App() {
           onClose={() => dispatchUpdate({ type: 'close' })}
         />
       )}
+      {/* Se as duas janelas quiserem abrir juntas, a de atualização vem primeiro. */}
+      {news && !showUpdateModal(update) && <NewsModal {...news} onClose={() => setNews(null)} />}
     </div>
   )
 }
