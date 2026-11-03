@@ -34,24 +34,28 @@ import {
 
 // ---------- ícones ----------
 
+// Desenhos da Lucide (lucide.dev, licença ISC), de traço fino e arredondado como os ícones do Mac.
+// Os da Apple (SF Symbols) não podem ser copiados. O "check" foi desenhado aqui, com bolinhas como no Notas.
 const ICONS = {
-  compose: 'M4 20h4L19 9l-4-4L4 16v4zM14 6l4 4',
-  trash: 'M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13',
-  pin: 'M9 4h6l-1 6 3 3H7l3-3-1-6zM12 13v7',
-  check: 'M4 6h2M4 12h2M4 18h2M9 6h11M9 12h11M9 18h11',
-  table: 'M4 5h16v14H4zM4 10h16M4 15h16M10 5v14',
-  clip: 'M20 11.5l-8 8a5 5 0 0 1-7-7l8.5-8.5a3.3 3.3 0 0 1 4.7 4.7L9.7 17a1.7 1.7 0 0 1-2.4-2.4L15 7',
-  folder: 'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z',
-  newFolder: 'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM12 10v6M9 13h6',
-  search: 'M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4',
-  sidebar: 'M4 5h16v14H4zM9 5v14',
-  export: 'M12 15V4M8 8l4-4 4 4M5 14v5h14v-5',
-  import: 'M12 4v11M8 11l4 4 4-4M5 14v5h14v-5',
+  compose:
+    'M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7M18.4 2.6a1 1 0 0 1 3 3l-9 9a2 2 0 0 1-.85.5l-2.87.84a.5.5 0 0 1-.62-.62l.84-2.87a2 2 0 0 1 .5-.85z',
+  trash: 'M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M10 11v6M14 11v6',
+  pin: 'M12 17v5M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z',
+  check: 'M2.5 7a3 3 0 1 0 6 0 3 3 0 1 0-6 0M4.2 7.1l1 1 1.9-2.1M2.5 17a3 3 0 1 0 6 0 3 3 0 1 0-6 0M12 7h9M12 17h9',
+  table: 'M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zM3 9h18M3 15h18M9 3v18M15 3v18',
+  clip: 'M13.23 20.25 21 12.3M16 6l-8.41 8.59a2 2 0 0 0 2.82 2.82l8.42-8.58a4 4 0 0 0-5.66-5.66l-8.42 8.58a6 6 0 1 0 8.49 8.49',
+  folder: 'M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z',
+  newFolder:
+    'M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2zM12 10v6M9 13h6',
+  search: 'M21 21l-4.34-4.34M11 3a8 8 0 1 0 0 16 8 8 0 0 0 0-16z',
+  sidebar: 'M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zM9 3v18',
+  export: 'M12 3v12M17 8l-5-5-5 5M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4',
+  import: 'M12 15V3M7 10l5 5 5-5M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4',
 }
 
 function Icon({ name, size = 18 }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <path d={ICONS[name]} />
     </svg>
   )
@@ -177,7 +181,8 @@ function TableMenu({ editor }) {
   )
 }
 
-function NoteEditor({ note, onChange, onTogglePin, onRestore, editorRef }) {
+// end (a busca) fica na mesma barra da formatação.
+function NoteEditor({ note, onChange, onTogglePin, onRestore, editorRef, end }) {
   const fileInput = useRef(null)
   const inTrash = Boolean(note.deletedAt)
   const editor = useEditor({
@@ -212,7 +217,7 @@ function NoteEditor({ note, onChange, onTogglePin, onRestore, editorRef }) {
   if (inTrash) {
     return (
       <>
-        <header className="editor-bar drag" />
+        <header className="editor-bar drag">{end}</header>
         <div className="trash-banner">
           <span>
             Esta nota está em Apagadas Recentemente e será apagada de vez em {daysLeft(note)} {daysLeft(note) === 1 ? 'dia' : 'dias'}.
@@ -258,6 +263,7 @@ function NoteEditor({ note, onChange, onTogglePin, onRestore, editorRef }) {
             <Icon name="pin" />
           </button>
         </div>
+        {end}
       </header>
       <div className="editor-scroll" onMouseDown={(e) => e.target === e.currentTarget && editor.commands.focus('end')}>
         <div className="note-date">{longDate(note.updatedAt)}</div>
@@ -377,7 +383,8 @@ export default function App() {
   const [noteId, setNoteId] = useState(null)
   const [query, setQuery] = useState('')
   const [renaming, setRenaming] = useState(null)
-  const [sidebarOpen, setSidebarOpen] = useState(true)
+  // Como no Mac, as pastas começam escondidas e o app lembra se você deixou a barra aberta.
+  const [sidebarOpen, setSidebarOpen] = useState(() => localStorage.getItem('barraLateralAberta') === 'sim')
   const [update, dispatchUpdate] = useReducer(updateReducer, initialUpdate)
   const [currentVersion, setCurrentVersion] = useState('')
   // Janela de novidades: { title, entries } quando aberta.
@@ -414,6 +421,10 @@ export default function App() {
     window.notesApi.getUpdate().then((event) => event && dispatchUpdate(event))
     return unsubscribe
   }, [])
+
+  useEffect(() => {
+    localStorage.setItem('barraLateralAberta', sidebarOpen ? 'sim' : 'nao')
+  }, [sidebarOpen])
 
   useEffect(() => {
     if (!data) return
@@ -574,6 +585,32 @@ export default function App() {
   const count = (id) => countNotes(data.notes, id)
   const trashCount = count(TRASH)
   const inTrashFolder = folderId === TRASH
+  // Apagar e nova nota ficam em cima da lista; a busca fica no meio da barra do editor.
+  const noteActions = (
+    <div className="tools no-drag">
+      <button className="tool" title={note?.deletedAt ? 'Apagar permanentemente' : 'Mover para Apagadas Recentemente'} onClick={deleteNote} disabled={!note}>
+        <Icon name="trash" />
+      </button>
+      <button className="tool" title="Nova nota (Ctrl+N)" onClick={newNote}>
+        <Icon name="compose" />
+      </button>
+    </div>
+  )
+  const barEnd = (
+    <div className="bar-end no-drag">
+      {/* Fica ao lado da busca enquanto houver versão nova não instalada. */}
+      {showUpdateButton(update) && (
+        <button className="update-button" title={`Atualizar para a versão ${update.version}`} onClick={startUpdate}>
+          Atualizar
+        </button>
+      )}
+      <div className="search">
+        <Icon name="search" size={15} />
+        <input ref={searchRef} placeholder="Buscar" value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => e.key === 'Escape' && setQuery('')} />
+      </div>
+    </div>
+  )
+
   const folderRow = (f, removable, icon = 'folder') => (
     <div
       key={f.id}
@@ -642,26 +679,11 @@ export default function App() {
               <Icon name="sidebar" />
             </button>
           </div>
-          <div className="tools no-drag">
-            <button
-              className="tool"
-              title={note?.deletedAt ? 'Apagar permanentemente' : 'Mover para Apagadas Recentemente'}
-              onClick={deleteNote}
-              disabled={!note}
-            >
-              <Icon name="trash" />
-            </button>
-            <button className="tool" title="Nova nota (Ctrl+N)" onClick={newNote}>
-              <Icon name="compose" />
-            </button>
-          </div>
+          {noteActions}
         </header>
-        <div className="search">
-          <Icon name="search" size={15} />
-          <input ref={searchRef} placeholder="Buscar" value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => e.key === 'Escape' && setQuery('')} />
-        </div>
-        {/* A key recria a lista ao trocar de pasta: ela entra com um fade e volta para o topo. */}
-        <div className="notes" key={folderId} ref={listRef}>
+        {/* A key recria a lista ao trocar de pasta: ela entra com um fade e volta para o topo.
+            O tabIndex deixa a lista receber o foco: com ele, a nota selecionada fica amarela; sem, cinza. */}
+        <div className="notes" key={folderId} ref={listRef} tabIndex={-1}>
           {inTrashFolder && trashCount > 0 && (
             <div className="trash-info">
               <span>As notas ficam aqui por {TRASH_DAYS} dias antes de serem apagadas de vez.</span>
@@ -704,21 +726,16 @@ export default function App() {
             onChange={(html, text) => updateNote(note.id, { html, text, updatedAt: Date.now() })}
             onTogglePin={() => updateNote(note.id, { pinned: !note.pinned })}
             onRestore={() => restore(note.id)}
+            end={barEnd}
           />
         ) : (
           <>
-            <header className="editor-bar drag" />
+            <header className="editor-bar drag">{barEnd}</header>
             <div className="no-note">Nenhuma nota selecionada</div>
           </>
         )}
       </main>
 
-      {/* Fica no topo, ao lado dos botões da janela, enquanto houver versão nova não instalada. */}
-      {showUpdateButton(update) && (
-        <button className="update-button" title={`Atualizar para a versão ${update.version}`} onClick={startUpdate}>
-          Atualizar
-        </button>
-      )}
       {showUpdateModal(update) && (
         <UpdateModal
           update={update}

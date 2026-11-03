@@ -3,6 +3,14 @@
 // Antes de `npm version`, adicione aqui a entrada da versão nova: sem ela os testes falham e o release não sai.
 export const CHANGELOG = [
   {
+    version: '1.6.0',
+    items: [
+      'Visual novo, mais parecido com o Notas do Mac: letras novas, ícones mais finos e texto ocupando a largura toda.',
+      'A barra de pastas começa escondida. Abra pelo botão no canto de cima, e o app lembra se você deixou aberta.',
+      'A busca agora fica no meio da barra de cima, e os botões de apagar e de nova nota ficam em cima da lista.',
+    ],
+  },
+  {
     version: '1.5.0',
     items: [
       'O app ficou mais suave: a barra de pastas desliza ao abrir e fechar, e as notas se movem com animação ao apagar, fixar ou mudar de lugar.',

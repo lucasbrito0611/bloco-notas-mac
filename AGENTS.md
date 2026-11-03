@@ -157,7 +157,10 @@ A lista fica no [README.md](README.md), na seção "Próximos passos". Ao termin
 
 ## Convenções
 
-- Visual inspirado no Notas do Mac, mas com cara de Windows 11 (Mica, botões de janela nativos, fonte Segoe UI).
+- Visual inspirado no Notas do Mac, mas com os botões de janela nativos do Windows 11 e o efeito Mica.
+- Fonte **Inter** (`@fontsource-variable/inter`, importada em `src/main.jsx` e incluída no app), no lugar da SF Pro, que só pode ser usada em aparelhos da Apple.
+- Ícones desenhados a partir da **Lucide** (licença ISC), copiados para o mapa `ICONS` em `App.jsx`. Não copie os SF Symbols da Apple.
+- Como no Mac: a barra de pastas começa escondida (a escolha fica no `localStorage`, chave `barraLateralAberta`); apagar e nova nota ficam em cima da lista; na barra do editor, a formatação fica à esquerda e a busca no meio; a nota selecionada fica cinza, e amarela só quando o foco está na lista.
 - Cor de destaque amarela (`--accent`). Sempre defina cores como variáveis em `:root` e o equivalente no tema escuro.
 - Atalhos usam `Ctrl` (padrão do Windows), não `Cmd`.
 - Mantenha o README em primeira pessoa, como se fosse o Lucas falando.

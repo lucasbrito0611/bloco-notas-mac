@@ -1,6 +1,8 @@
 import React from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App.jsx'
+// Inter: fonte livre parecida com a SF Pro do Mac. Vai junto no app, então funciona sem internet.
+import '@fontsource-variable/inter/opsz.css'
 import './styles.css'
 
 // Fora do Electron (ex.: abrindo o Vite no navegador), salva no localStorage
