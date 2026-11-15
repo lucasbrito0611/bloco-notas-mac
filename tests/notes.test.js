@@ -25,6 +25,9 @@ import {
   attachmentUrls,
   mergeData,
   importMessage,
+  quickOpenNotes,
+  pushNavHistory,
+  stepNavHistory,
 } from '../src/notes.js'
 
 const NOW = new Date(2026, 9, 30, 15, 0).getTime()
@@ -243,5 +246,38 @@ describe('importar notas de um arquivo .notas', () => {
     expect(importMessage({ added: 0, updated: 0 })).toMatch(/Nenhuma novidade/)
     expect(importMessage({ added: 1, updated: 0 })).toBe('Importação concluída: 1 nota nova.')
     expect(importMessage({ added: 3, updated: 2 })).toBe('Importação concluída: 3 notas novas e 2 notas atualizadas.')
+  })
+})
+
+describe('navegação rápida (Ctrl+P) e histórico (Alt+← / Alt+→)', () => {
+  it('ordena resultados do Ctrl+P por relevância do título e ignora lixo e acentos', () => {
+    const folders = [{ id: DEFAULT_FOLDER, name: 'Notas' }, { id: 'trab', name: 'Trabalho' }]
+    const notes = [
+      note({ id: 'body', text: 'Anotações\nfazer café' }),
+      note({ id: 'mid', text: 'Hora do café' }),
+      note({ id: 'start', text: 'Café da manhã' }),
+      note({ id: 'trash', text: 'Café apagado', deletedAt: NOW }),
+    ]
+    expect(quickOpenNotes(notes, folders, 'cafe').map((r) => r.note.id)).toEqual(['start', 'mid', 'body'])
+    expect(quickOpenNotes(notes, folders, 'trabalho')).toHaveLength(0)
+  })
+
+  it('navega no histórico pulando notas removidas', () => {
+    let h = { stack: [], index: -1 }
+    h = pushNavHistory(h, 'a')
+    h = pushNavHistory(h, 'a') // não duplica seguida
+    h = pushNavHistory(h, 'b')
+    h = pushNavHistory(h, 'c')
+    expect(h).toEqual({ stack: ['a', 'b', 'c'], index: 2 })
+
+    // Se "b" foi para o lixo, voltar pula direto para "a"
+    const valid = new Set(['a', 'c'])
+    const back = stepNavHistory(h, -1, valid)
+    expect(back.noteId).toBe('a')
+    expect(back.history.index).toBe(0)
+
+    // Abrir "d" a partir de "a" descarta o futuro antigo
+    const branched = pushNavHistory(back.history, 'd')
+    expect(branched).toEqual({ stack: ['a', 'd'], index: 1 })
   })
 })

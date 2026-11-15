@@ -6,10 +6,14 @@ import Image from '@tiptap/extension-image'
 import { TableKit } from '@tiptap/extension-table'
 import FileHandler from '@tiptap/extension-file-handler'
 import { Attachment } from './attachment.js'
+import { Indent } from './indent.js'
+import { VSCodeBlocks } from './blocks.js'
+import { MultiCursor, multiCursorPluginKey } from './multiCursor.js'
+import { NoteSearch } from './search.js'
 
 // Lista de extensões do editor, compartilhada entre o app e os testes.
 // onFiles(editor, files, pos) é chamado quando o usuário cola ou arrasta arquivos.
-export function buildExtensions({ onFiles } = {}) {
+export function buildExtensions({ onFiles, onChordChange, onCopyLine } = {}) {
   const extensions = [
     StarterKit,
     TaskList,
@@ -18,6 +22,13 @@ export function buildExtensions({ onFiles } = {}) {
     Image.configure({ allowBase64: true }),
     TableKit.configure({ table: { resizable: false } }),
     Attachment,
+    Indent,
+    MultiCursor.configure({ onChordChange, onCopyMulti: onCopyLine }),
+    VSCodeBlocks.configure({
+      isMultiCursorActive: (state) => (multiCursorPluginKey.getState(state)?.ranges.length || 0) > 1,
+      onCopyLine,
+    }),
+    NoteSearch,
   ]
   if (onFiles) {
     extensions.push(

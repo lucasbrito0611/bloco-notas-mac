@@ -4,6 +4,8 @@ import { buildExtensions, nodeForAttachment } from './editor/extensions.js'
 import { initialUpdate, updateReducer, showUpdateModal, showUpdateButton } from './updates.js'
 import { useListMotion, collapse } from './motion.js'
 import { CHANGELOG, newsSince } from './changelog.js'
+import { FindBar } from './components/FindBar.jsx'
+import { PaletteModal } from './components/PaletteModal.jsx'
 import appIcon from '../build/icon.png'
 import {
   ALL,
@@ -13,6 +15,7 @@ import {
   titleOf,
   previewOf,
   isBlank,
+  normalize,
   shortDate,
   longDate,
   filterNotes,
@@ -30,6 +33,9 @@ import {
   attachmentUrls,
   mergeData,
   importMessage,
+  quickOpenNotes,
+  pushNavHistory,
+  stepNavHistory,
 } from './notes.js'
 
 // ---------- ícones ----------
@@ -51,6 +57,7 @@ const ICONS = {
   sidebar: 'M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zM9 3v18',
   export: 'M12 3v12M17 8l-5-5-5 5M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4',
   import: 'M12 15V3M7 10l5 5 5-5M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4',
+  close: 'M18 6 6 18M6 6l12 12',
 }
 
 function Icon({ name, size = 18 }) {
@@ -182,11 +189,11 @@ function TableMenu({ editor }) {
 }
 
 // end (a busca) fica na mesma barra da formatação.
-function NoteEditor({ note, onChange, onTogglePin, onRestore, editorRef, end }) {
+function NoteEditor({ note, onChange, onTogglePin, onRestore, onChordChange, findBar, editorRef, end }) {
   const fileInput = useRef(null)
   const inTrash = Boolean(note.deletedAt)
   const editor = useEditor({
-    extensions: buildExtensions({ onFiles: insertFiles }),
+    extensions: buildExtensions({ onFiles: insertFiles, onChordChange }),
     content: note.html,
     // Nota no lixo é só para leitura: para editar, primeiro recupere.
     editable: !inTrash,
@@ -218,6 +225,7 @@ function NoteEditor({ note, onChange, onTogglePin, onRestore, editorRef, end }) 
     return (
       <>
         <header className="editor-bar drag">{end}</header>
+        <FindBar editor={editor} readOnly {...findBar} />
         <div className="trash-banner">
           <span>
             Esta nota está em Apagadas Recentemente e será apagada de vez em {daysLeft(note)} {daysLeft(note) === 1 ? 'dia' : 'dias'}.
@@ -265,6 +273,7 @@ function NoteEditor({ note, onChange, onTogglePin, onRestore, editorRef, end }) 
         </div>
         {end}
       </header>
+      <FindBar editor={editor} readOnly={false} {...findBar} />
       <div className="editor-scroll" onMouseDown={(e) => e.target === e.currentTarget && editor.commands.focus('end')}>
         <div className="note-date">{longDate(note.updatedAt)}</div>
         <EditorContent editor={editor} className="editor" />
@@ -376,6 +385,7 @@ function NewsModal({ entries, title, onClose }) {
 
 // O Electron embrulha os erros do processo principal ("Error invoking remote method..."); fica só a mensagem.
 const ipcError = (err) => String(err?.message || err).replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
+const clampZoom = (v) => Math.round(Math.min(1.8, Math.max(0.7, v)) * 10) / 10
 
 export default function App() {
   const [data, setData] = useState(null)
@@ -385,6 +395,15 @@ export default function App() {
   const [renaming, setRenaming] = useState(null)
   // Como no Mac, as pastas começam escondidas e o app lembra se você deixou a barra aberta.
   const [sidebarOpen, setSidebarOpen] = useState(() => localStorage.getItem('barraLateralAberta') === 'sim')
+  const [editorScale, setEditorScale] = useState(() => clampZoom(parseFloat(localStorage.getItem('zoomEditor')) || 1))
+  const [zoomNotice, setZoomNotice] = useState(null)
+  const [chord, setChord] = useState(null)
+  const [findOpen, setFindOpen] = useState(false)
+  const [findShowReplace, setFindShowReplace] = useState(false)
+  const [findQuery, setFindQuery] = useState('')
+  const [findCaseSensitive, setFindCaseSensitive] = useState(false)
+  const [replaceText, setReplaceText] = useState('')
+  const [palette, setPalette] = useState(null)
   const [update, dispatchUpdate] = useReducer(updateReducer, initialUpdate)
   const [currentVersion, setCurrentVersion] = useState('')
   // Janela de novidades: { title, entries } quando aberta.
@@ -392,8 +411,14 @@ export default function App() {
   // Muda a cada importação, para o editor recarregar a nota aberta se ela veio atualizada no arquivo.
   const [imports, setImports] = useState(0)
   const searchRef = useRef(null)
+  const sidebarRef = useRef(null)
   const editorRef = useRef(null)
   const listRef = useRef(null)
+  const findInputRef = useRef(null)
+  const replaceInputRef = useRef(null)
+  const navHistoryRef = useRef({ stack: [], index: -1 })
+  const navSteppingRef = useRef(false)
+  const zoomTimerRef = useRef(null)
   // Enquanto a nota apagada está recolhendo, ignora novos cliques na lixeira.
   const deletingRef = useRef(false)
   const dataRef = useRef(null)
@@ -425,6 +450,21 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('barraLateralAberta', sidebarOpen ? 'sim' : 'nao')
   }, [sidebarOpen])
+
+  useEffect(() => {
+    localStorage.setItem('zoomEditor', String(editorScale))
+  }, [editorScale])
+
+  useEffect(() => () => clearTimeout(zoomTimerRef.current), [])
+
+  useEffect(() => {
+    if (!noteId) return
+    if (navSteppingRef.current) {
+      navSteppingRef.current = false
+      return
+    }
+    navHistoryRef.current = pushNavHistory(navHistoryRef.current, noteId)
+  }, [noteId])
 
   useEffect(() => {
     if (!data) return
@@ -463,6 +503,90 @@ export default function App() {
     },
     [noteId],
   )
+
+  const navigateToNote = useCallback(
+    (target) => {
+      if (!target) return
+      setData((d) => {
+        const cur = d.notes.find((n) => n.id === noteId)
+        if (cur && cur.id !== target.id && isBlank(cur)) return { ...d, notes: d.notes.filter((n) => n.id !== cur.id) }
+        return d
+      })
+      if (target.deletedAt) setFolderId(TRASH)
+      else if (folderId === TRASH || (folderId !== ALL && folderId !== target.folderId)) setFolderId(ALL)
+      if (query && !filterNotes([target], { query }).length) setQuery('')
+      setNoteId(target.id)
+    },
+    [noteId, folderId, query],
+  )
+
+  const stepHistory = useCallback(
+    (delta) => {
+      if (!data) return
+      const valid = new Set(data.notes.filter((n) => !n.deletedAt).map((n) => n.id))
+      const res = stepNavHistory(navHistoryRef.current, delta, valid)
+      if (!res) return
+      const target = data.notes.find((n) => n.id === res.noteId)
+      if (!target) return
+      navHistoryRef.current = res.history
+      navSteppingRef.current = true
+      navigateToNote(target)
+    },
+    [data, navigateToNote],
+  )
+
+  const stepNoteInList = useCallback(
+    (delta) => {
+      if (!visibleNotes.length) return
+      const idx = visibleNotes.findIndex((n) => n.id === noteId)
+      const nextIdx = idx === -1 ? (delta > 0 ? 0 : visibleNotes.length - 1) : Math.max(0, Math.min(visibleNotes.length - 1, idx + delta))
+      const target = visibleNotes[nextIdx]
+      if (target && target.id !== noteId) {
+        selectNote(target.id)
+        requestAnimationFrame(() => {
+          listRef.current?.querySelector(`[data-flip="${CSS.escape(target.id)}"]`)?.scrollIntoView?.({ block: 'nearest' })
+        })
+      }
+    },
+    [visibleNotes, noteId, selectNote],
+  )
+
+  const applyZoom = useCallback((next) => {
+    setEditorScale((prev) => {
+      const clamped = clampZoom(typeof next === 'function' ? next(prev) : next)
+      setZoomNotice(`Zoom ${Math.round(clamped * 100)}%`)
+      clearTimeout(zoomTimerRef.current)
+      zoomTimerRef.current = setTimeout(() => setZoomNotice(null), 1100)
+      return clamped
+    })
+  }, [])
+
+  const openFind = useCallback(
+    (withReplace = false) => {
+      if (!note) return
+      const ed = editorRef.current
+      if (ed && !ed.state.selection.empty) {
+        const selText = ed.state.doc.textBetween(ed.state.selection.from, ed.state.selection.to, '\n')
+        if (selText && !selText.includes('\n') && selText.length <= 120) setFindQuery(selText)
+      }
+      const wantReplace = withReplace && !note.deletedAt
+      setFindOpen(true)
+      setFindShowReplace(wantReplace)
+      requestAnimationFrame(() => {
+        const input = wantReplace && findQuery ? replaceInputRef.current : findInputRef.current
+        input?.focus()
+        input?.select()
+      })
+    },
+    [note, findQuery],
+  )
+
+  const closeFind = useCallback(() => {
+    setFindOpen(false)
+    editorRef.current?.commands.focusActiveNoteMatch()
+    editorRef.current?.commands.clearNoteSearch()
+    editorRef.current?.commands.focus()
+  }, [])
 
   const newNote = useCallback(() => {
     const now = Date.now()
@@ -508,10 +632,10 @@ export default function App() {
     })
   }, [note, visibleNotes, removeForever])
 
-  const restore = (id) => {
+  const restore = useCallback((id) => {
     setData((d) => restoreNote(d, id))
     setFolderId(ALL)
-  }
+  }, [])
 
   const clearTrash = () => {
     const total = countNotes(data.notes, TRASH)
@@ -521,16 +645,16 @@ export default function App() {
     setNoteId(filterNotes(data.notes)[0]?.id ?? null)
   }
 
-  const exportAll = async () => {
+  const exportAll = useCallback(async () => {
     try {
       await window.notesApi.exportNotes(dataRef.current, attachmentUrls(dataRef.current.notes))
     } catch (err) {
       alert(`Não foi possível exportar as notas.\n\n${ipcError(err)}`)
     }
-  }
+  }, [])
 
   // Junta as notas do arquivo com as atuais (veja mergeData); o salvamento automático grava o resultado.
-  const importAll = async () => {
+  const importAll = useCallback(async () => {
     let imported
     try {
       imported = await window.notesApi.importNotes()
@@ -545,7 +669,7 @@ export default function App() {
     setImports((n) => n + 1)
     setNoteId((id) => id ?? filterNotes(next.notes)[0]?.id ?? null)
     alert(importMessage(result))
-  }
+  }, [])
 
   const newFolder = useCallback(() => {
     const f = { id: uid(), name: 'Nova Pasta' }
@@ -564,27 +688,203 @@ export default function App() {
   // Anima a lista quando notas mudam de lugar (fixar, editar, apagar). Trocar de pasta ou buscar não anima.
   useListMotion(listRef, `${folderId}|${query}`)
 
-  // atalhos
+  const focusSidebar = useCallback(() => {
+    setSidebarOpen(true)
+    requestAnimationFrame(() => sidebarRef.current?.focus())
+  }, [])
+
+  const paletteItems = useMemo(() => {
+    if (!palette || !data) return []
+    if (palette.mode === 'quickOpen') {
+      return quickOpenNotes(data.notes, data.folders, palette.query).map(({ note: n, folderName }) => ({
+        id: n.id,
+        label: titleOf(n),
+        sub: folderName || previewOf(n),
+        badge: shortDate(n.updatedAt),
+        run: () => {
+          navigateToNote(n)
+          requestAnimationFrame(() => editorRef.current?.commands.focus())
+        },
+      }))
+    }
+
+    const canEditNote = Boolean(note && !note.deletedAt)
+    const commands = [
+      { id: 'new-note', label: 'Nova nota', shortcut: 'Ctrl+N', run: newNote },
+      { id: 'new-folder', label: 'Nova pasta', shortcut: 'Ctrl+Shift+N', run: newFolder },
+      { id: 'quick-open', label: 'Ir para nota', shortcut: 'Ctrl+P', run: () => setPalette({ mode: 'quickOpen', query: '' }) },
+      { id: 'toggle-sidebar', label: 'Mostrar / ocultar barra de pastas', shortcut: 'Ctrl+\\', run: () => setSidebarOpen((v) => !v) },
+      { id: 'global-search', label: 'Buscar em todas as notas', shortcut: 'Ctrl+Shift+F', run: () => searchRef.current?.focus() },
+      { id: 'focus-folders', label: 'Focar pastas', shortcut: 'Ctrl+1', run: focusSidebar },
+      { id: 'focus-list', label: 'Focar lista de notas', shortcut: 'Ctrl+2', run: () => listRef.current?.focus() },
+      { id: 'focus-editor', label: 'Focar editor', shortcut: 'Ctrl+3', run: () => editorRef.current?.commands.focus() },
+      { id: 'hist-back', label: 'Nota anterior do histórico', shortcut: 'Alt+←', run: () => stepHistory(-1) },
+      { id: 'hist-fwd', label: 'Próxima nota do histórico', shortcut: 'Alt+→', run: () => stepHistory(1) },
+      { id: 'zoom-in', label: 'Aumentar zoom do editor', shortcut: 'Ctrl+=', run: () => applyZoom((z) => z + 0.1) },
+      { id: 'zoom-out', label: 'Diminuir zoom do editor', shortcut: 'Ctrl+-', run: () => applyZoom((z) => z - 0.1) },
+      { id: 'zoom-reset', label: 'Resetar zoom do editor', shortcut: 'Ctrl+0', run: () => applyZoom(1) },
+      ...(note ? [{ id: 'find-note', label: 'Localizar na nota', shortcut: 'Ctrl+F', run: () => openFind(false) }] : []),
+      ...(canEditNote
+        ? [
+            { id: 'replace-note', label: 'Localizar e substituir na nota', shortcut: 'Ctrl+H', run: () => openFind(true) },
+            {
+              id: 'pin-note',
+              label: note.pinned ? 'Desafixar nota' : 'Fixar nota',
+              run: () => updateNote(note.id, { pinned: !note.pinned }),
+            },
+            { id: 'del-note', label: 'Mover nota para lixeira', shortcut: 'Delete', run: deleteNote },
+            { id: 'fmt-h1', label: 'Formatar como Título', shortcut: 'Ctrl+Alt+1', run: () => editorRef.current?.chain().focus().setHeading({ level: 1 }).run() },
+            { id: 'fmt-h2', label: 'Formatar como Cabeçalho', shortcut: 'Ctrl+Alt+2', run: () => editorRef.current?.chain().focus().setHeading({ level: 2 }).run() },
+            { id: 'fmt-h3', label: 'Formatar como Subcabeçalho', shortcut: 'Ctrl+Alt+3', run: () => editorRef.current?.chain().focus().setHeading({ level: 3 }).run() },
+            { id: 'fmt-p', label: 'Formatar como Corpo', shortcut: 'Ctrl+Alt+0', run: () => editorRef.current?.chain().focus().setParagraph().run() },
+            { id: 'fmt-task', label: 'Alternar lista de verificação', shortcut: 'Ctrl+Shift+L', run: () => editorRef.current?.chain().focus().toggleTaskList().run() },
+            { id: 'fmt-bullet', label: 'Alternar lista com marcadores', shortcut: 'Ctrl+Shift+8', run: () => editorRef.current?.chain().focus().toggleBulletList().run() },
+            { id: 'fmt-ordered', label: 'Alternar lista numerada', shortcut: 'Ctrl+Shift+7', run: () => editorRef.current?.chain().focus().toggleOrderedList().run() },
+            { id: 'fmt-quote', label: 'Alternar citação', shortcut: 'Ctrl+Shift+B', run: () => editorRef.current?.chain().focus().toggleBlockquote().run() },
+            { id: 'fmt-code', label: 'Alternar bloco monoespaçado', shortcut: 'Ctrl+Alt+C', run: () => editorRef.current?.chain().focus().toggleCodeBlock().run() },
+            { id: 'ins-table', label: 'Inserir tabela 3×3', run: () => editorRef.current?.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: false }).run() },
+            { id: 'move-up', label: 'Mover linha para cima', shortcut: 'Alt+↑', run: () => editorRef.current?.chain().focus().moveLinesUp().run() },
+            { id: 'move-down', label: 'Mover linha para baixo', shortcut: 'Alt+↓', run: () => editorRef.current?.chain().focus().moveLinesDown().run() },
+            { id: 'dup-up', label: 'Duplicar linha acima', shortcut: 'Alt+Shift+↑', run: () => editorRef.current?.chain().focus().duplicateLinesUp().run() },
+            { id: 'dup-down', label: 'Duplicar linha abaixo', shortcut: 'Alt+Shift+↓', run: () => editorRef.current?.chain().focus().duplicateLinesDown().run() },
+            { id: 'del-line', label: 'Apagar linha inteira', shortcut: 'Ctrl+Shift+K', run: () => editorRef.current?.chain().focus().deleteLines().run() },
+            { id: 'sel-all-occ', label: 'Selecionar todas as ocorrências iguais', shortcut: 'Ctrl+Alt+L', run: () => editorRef.current?.chain().focus().selectAllOccurrences().run() },
+          ]
+        : []),
+      ...(note?.deletedAt ? [{ id: 'restore-note', label: 'Recuperar nota da lixeira', run: () => restore(note.id) }] : []),
+      ...(folderId !== ALL && folderId !== TRASH
+        ? [{ id: 'rename-folder', label: 'Renomear pasta atual', shortcut: 'F2', run: () => setRenaming(folderId) }]
+        : []),
+      { id: 'export', label: 'Exportar notas (.notas)', run: exportAll },
+      { id: 'import', label: 'Importar notas (.notas)', run: importAll },
+      { id: 'news', label: 'Ver novidades da versão', run: () => setNews({ title: 'Novidades', entries: allNews(currentVersion) }) },
+    ]
+
+    const q = normalize(palette.query.trim())
+    return q ? commands.filter((c) => normalize(c.label).includes(q) || normalize(c.shortcut || '').includes(q)) : commands
+  }, [palette, data, note, folderId, currentVersion, newNote, newFolder, focusSidebar, stepHistory, applyZoom, openFind, updateNote, deleteNote, restore, exportAll, importAll, navigateToNote])
+
+  // atalhos globais (app + navegação VS Code)
   useEffect(() => {
     const onKey = (e) => {
-      if (!e.ctrlKey) return
+      if (e.getModifierState?.('AltGraph')) return
+      if (showUpdateModal(update) || news || renaming) return
+
+      const mod = e.ctrlKey || e.metaKey
       const k = e.key.toLowerCase()
+
+      if (mod && !e.altKey && k === 'p' && e.shiftKey) {
+        e.preventDefault()
+        setPalette((p) => (p?.mode === 'commands' ? null : { mode: 'commands', query: '' }))
+        return
+      }
+      if (mod && !e.altKey && !e.shiftKey && k === 'p') {
+        e.preventDefault()
+        setPalette((p) => (p?.mode === 'quickOpen' ? null : { mode: 'quickOpen', query: '' }))
+        return
+      }
+      if (palette) return
+
+      if (!mod && e.altKey && !e.shiftKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+        e.preventDefault()
+        stepHistory(e.key === 'ArrowLeft' ? -1 : 1)
+        return
+      }
+      if (!mod && !e.altKey && e.key === 'F3' && findOpen && editorRef.current) {
+        e.preventDefault()
+        if (e.shiftKey) editorRef.current.commands.prevNoteMatch()
+        else editorRef.current.commands.nextNoteMatch()
+        return
+      }
+      if (!mod && !e.altKey && !e.shiftKey && e.key === 'F2') {
+        const active = document.activeElement
+        if (sidebarOpen && folderId !== ALL && folderId !== TRASH && !active?.closest?.('.ProseMirror, input, textarea')) {
+          e.preventDefault()
+          setRenaming(folderId)
+        }
+        return
+      }
+
+      if (!mod || e.altKey) return
+
       if (k === 'n' && e.shiftKey) newFolder()
-      else if (k === 'n') newNote()
-      else if (k === 'f') searchRef.current?.focus()
+      else if (k === 'n' && !e.shiftKey) newNote()
+      else if (k === 'f' && e.shiftKey) {
+        searchRef.current?.focus()
+        searchRef.current?.select()
+      } else if (k === 'f' && !e.shiftKey) openFind(false)
+      else if (k === 'h' && !e.shiftKey) openFind(true)
       else if (k === 'l' && e.shiftKey) editorRef.current?.chain().focus().toggleTaskList().run()
+      else if (!e.shiftKey && (e.key === '\\' || e.code === 'Backslash')) setSidebarOpen((v) => !v)
+      else if (!e.shiftKey && e.key === '1') focusSidebar()
+      else if (!e.shiftKey && e.key === '2') listRef.current?.focus()
+      else if (!e.shiftKey && e.key === '3') editorRef.current?.commands.focus()
+      else if (!e.shiftKey && e.key === 'PageUp') stepNoteInList(-1)
+      else if (!e.shiftKey && e.key === 'PageDown') stepNoteInList(1)
+      else if (e.key === '=' || e.key === '+' || e.code === 'NumpadAdd') applyZoom((z) => z + 0.1)
+      else if (e.key === '-' || e.code === 'Minus' || e.code === 'NumpadSubtract') applyZoom((z) => z - 0.1)
+      else if (!e.shiftKey && (e.key === '0' || e.code === 'Numpad0')) applyZoom(1)
       else return
       e.preventDefault()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [newNote, newFolder])
+  }, [update, news, renaming, palette, findOpen, sidebarOpen, folderId, newNote, newFolder, openFind, focusSidebar, stepHistory, stepNoteInList, applyZoom])
 
   if (!data) return null
 
   const count = (id) => countNotes(data.notes, id)
   const trashCount = count(TRASH)
   const inTrashFolder = folderId === TRASH
+  const visibleFolderIds = [ALL, ...data.folders.map((f) => f.id), ...(trashCount > 0 || inTrashFolder ? [TRASH] : [])]
+
+  const onSidebarKeyDown = (e) => {
+    if (renaming) return
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault()
+      const idx = visibleFolderIds.indexOf(folderId)
+      const nextIdx = Math.max(0, Math.min(visibleFolderIds.length - 1, idx + (e.key === 'ArrowDown' ? 1 : -1)))
+      setFolderId(visibleFolderIds[nextIdx])
+    } else if (e.key === 'F2' && folderId !== ALL && folderId !== TRASH) {
+      e.preventDefault()
+      setRenaming(folderId)
+    } else if (e.key === 'Enter') {
+      e.preventDefault()
+      listRef.current?.focus()
+    }
+  }
+
+  const onListKeyDown = (e) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      stepNoteInList(1)
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      stepNoteInList(-1)
+    } else if (e.key === 'Delete') {
+      e.preventDefault()
+      deleteNote()
+    } else if (e.key === 'Enter') {
+      e.preventDefault()
+      editorRef.current?.commands.focus()
+    }
+  }
+
+  const findBar = {
+    open: findOpen,
+    showReplace: findShowReplace,
+    onToggleReplace: setFindShowReplace,
+    query: findQuery,
+    onQueryChange: setFindQuery,
+    caseSensitive: findCaseSensitive,
+    onToggleCase: () => setFindCaseSensitive((v) => !v),
+    replaceText,
+    onReplaceTextChange: setReplaceText,
+    findInputRef,
+    replaceInputRef,
+    onClose: closeFind,
+  }
+
   // Apagar e nova nota ficam em cima da lista; a busca fica no meio da barra do editor.
   const noteActions = (
     <div className="tools no-drag">
@@ -604,9 +904,14 @@ export default function App() {
           Atualizar
         </button>
       )}
-      <div className="search">
+      <div className="search" title="Buscar em todas as notas (Ctrl+Shift+F)">
         <Icon name="search" size={15} />
         <input ref={searchRef} placeholder="Buscar" value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => e.key === 'Escape' && setQuery('')} />
+        {query && (
+          <button className="search-clear" title="Limpar busca" onClick={() => setQuery('')}>
+            <Icon name="close" size={13} />
+          </button>
+        )}
       </div>
     </div>
   )
@@ -644,10 +949,10 @@ export default function App() {
   )
 
   return (
-    <div className={`app ${sidebarOpen ? '' : 'no-sidebar'}`}>
+    <div className={`app ${sidebarOpen ? '' : 'no-sidebar'}`} style={{ '--editor-scale': editorScale }}>
       {/* Fica sempre montada para poder deslizar; fechada, o inert tira os botões do alcance do Tab. */}
       <aside className="sidebar" inert={sidebarOpen ? undefined : ''}>
-        <div className="sidebar-inner">
+        <div className="sidebar-inner" ref={sidebarRef} tabIndex={-1} onKeyDown={onSidebarKeyDown}>
           <div className="sidebar-top drag" />
           <div className="section-label">No Computador</div>
           {folderRow({ id: ALL, name: 'Todas as Notas' }, false)}
@@ -675,7 +980,7 @@ export default function App() {
       <section className="list">
         <header className="list-bar drag">
           <div className="tools no-drag">
-            <button className="tool" title="Mostrar/ocultar pastas" onClick={() => setSidebarOpen(!sidebarOpen)}>
+            <button className="tool" title="Mostrar/ocultar pastas (Ctrl+\)" onClick={() => setSidebarOpen(!sidebarOpen)}>
               <Icon name="sidebar" />
             </button>
           </div>
@@ -683,7 +988,7 @@ export default function App() {
         </header>
         {/* A key recria a lista ao trocar de pasta: ela entra com um fade e volta para o topo.
             O tabIndex deixa a lista receber o foco: com ele, a nota selecionada fica amarela; sem, cinza. */}
-        <div className="notes" key={folderId} ref={listRef} tabIndex={-1}>
+        <div className="notes" key={folderId} ref={listRef} tabIndex={-1} onKeyDown={onListKeyDown}>
           {inTrashFolder && trashCount > 0 && (
             <div className="trash-info">
               <span>As notas ficam aqui por {TRASH_DAYS} dias antes de serem apagadas de vez.</span>
@@ -726,6 +1031,8 @@ export default function App() {
             onChange={(html, text) => updateNote(note.id, { html, text, updatedAt: Date.now() })}
             onTogglePin={() => updateNote(note.id, { pinned: !note.pinned })}
             onRestore={() => restore(note.id)}
+            onChordChange={setChord}
+            findBar={findBar}
             end={barEnd}
           />
         ) : (
@@ -734,7 +1041,19 @@ export default function App() {
             <div className="no-note">Nenhuma nota selecionada</div>
           </>
         )}
+        {chord === 'ctrl-k' && <div className="editor-toast">Ctrl+K pressionado — aguarde Ctrl+D para pular ocorrência</div>}
+        {zoomNotice && <div className="editor-toast">{zoomNotice}</div>}
       </main>
+
+      {palette && (
+        <PaletteModal
+          mode={palette.mode}
+          query={palette.query}
+          onQueryChange={(q) => setPalette((p) => (p ? { ...p, query: q } : null))}
+          items={paletteItems}
+          onClose={() => setPalette(null)}
+        />
+      )}
 
       {showUpdateModal(update) && (
         <UpdateModal

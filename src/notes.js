@@ -198,3 +198,55 @@ export function formatSize(bytes) {
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
   return `${(bytes / 1024 / 1024).toFixed(1).replace('.', ',')} MB`
 }
+
+// ---------- navegação rápida (Ctrl+P) e histórico (Alt+← / Alt+→) ----------
+
+export function quickOpenNotes(notes, folders, query = '') {
+  const folderNames = new Map(folders.map((f) => [f.id, f.name]))
+  const active = notes.filter((n) => !isDeleted(n))
+  const q = normalize(query.trim())
+
+  if (!q) {
+    return active
+      .slice()
+      .sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updatedAt - a.updatedAt)
+      .map((n) => ({ note: n, folderName: folderNames.get(n.folderId) || '' }))
+  }
+
+  const scored = []
+  for (const n of active) {
+    const folderName = folderNames.get(n.folderId) || ''
+    const title = normalize(titleOf(n))
+    const text = normalize(n.text)
+    const folder = normalize(folderName)
+    let score = 0
+    if (title.startsWith(q)) score = 3
+    else if (title.includes(q)) score = 2
+    else if (text.includes(q) || folder.includes(q)) score = 1
+    if (score > 0) scored.push({ note: n, folderName, score })
+  }
+
+  return scored
+    .sort((a, b) => b.score - a.score || b.note.updatedAt - a.note.updatedAt)
+    .map(({ note, folderName }) => ({ note, folderName }))
+}
+
+export function pushNavHistory(history, noteId) {
+  if (!noteId) return history
+  if (history.stack[history.index] === noteId) return history
+  const nextStack = [...history.stack.slice(0, history.index + 1), noteId].slice(-50)
+  return { stack: nextStack, index: nextStack.length - 1 }
+}
+
+export function stepNavHistory(history, delta, validNoteIds) {
+  const step = delta < 0 ? -1 : 1
+  let idx = history.index + step
+  while (idx >= 0 && idx < history.stack.length) {
+    const id = history.stack[idx]
+    if (validNoteIds.has(id)) {
+      return { history: { stack: history.stack, index: idx }, noteId: id }
+    }
+    idx += step
+  }
+  return null
+}

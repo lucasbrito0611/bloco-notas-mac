@@ -89,13 +89,63 @@ npm run dev
 
 ## Atalhos
 
+### Geral e navegação
+
 | Atalho | Ação |
 |---|---|
 | `Ctrl+N` | Nova nota |
 | `Ctrl+Shift+N` | Nova pasta |
-| `Ctrl+F` | Buscar |
-| `Ctrl+Shift+L` | Lista de verificação |
-| Duplo clique na pasta | Renomear |
+| `Ctrl+P` | Ir rápido para uma nota |
+| `Ctrl+Shift+P` | Paleta de comandos |
+| `Ctrl+F` | Localizar na nota |
+| `Ctrl+H` | Localizar e substituir na nota |
+| `Ctrl+Shift+F` | Buscar em todas as notas |
+| `F3` / `Shift+F3` | Próxima / anterior ocorrência na nota |
+| `Ctrl+\` | Mostrar ou esconder a barra de pastas |
+| `Ctrl+1` / `Ctrl+2` / `Ctrl+3` | Focar Pastas / Lista de notas / Editor |
+| `Alt+←` / `Alt+→` | Voltar / avançar no histórico de notas |
+| `Ctrl+PageUp` / `Ctrl+PageDown` | Nota anterior / próxima na lista |
+| `Ctrl+=` / `Ctrl+-` / `Ctrl+0` | Aumentar / diminuir / redefinir zoom do editor |
+| `F2` ou duplo clique na pasta | Renomear pasta |
+
+### Edição de linhas e blocos
+
+| Atalho | Ação |
+|---|---|
+| `Alt+↑` / `Alt+↓` | Mover linha ou bloco para cima / baixo |
+| `Alt+Shift+↑` / `Alt+Shift+↓` | Duplicar linha ou bloco acima / abaixo |
+| `Ctrl+Shift+K` | Apagar linha |
+| `Ctrl+L` | Selecionar linha inteira (repita para estender) |
+| `Ctrl+Enter` / `Ctrl+Shift+Enter` | Inserir linha abaixo / acima |
+| `Ctrl+C` / `Ctrl+X` *(sem seleção)* | Copiar / recortar a linha inteira |
+| `Ctrl+]` / `Ctrl+[` | Aumentar / diminuir recuo |
+| `Alt+Shift+→` / `Alt+Shift+←` | Expandir / encolher seleção |
+
+### Múltiplos cursores e ocorrências
+
+| Atalho | Ação |
+|---|---|
+| `Ctrl+D` | Selecionar palavra / próxima ocorrência igual |
+| `Ctrl+K` depois `Ctrl+D` | Pular a ocorrência atual para a seguinte |
+| `Ctrl+Alt+L` | Selecionar todas as ocorrências iguais |
+| `Ctrl+Alt+↑` / `Ctrl+Alt+↓` | Adicionar cursor acima / abaixo |
+| `Alt+Clique` | Adicionar cursor onde clicar |
+| `Alt+Shift+I` | Colocar um cursor no fim de cada linha selecionada |
+| `Ctrl+Alt+U` | Desfazer último cursor adicionado |
+| `Esc` | Voltar para um único cursor |
+
+### Formatação
+
+| Atalho | Ação |
+|---|---|
+| `Ctrl+B` / `Ctrl+I` / `Ctrl+U` | Negrito / Itálico / Sublinhado |
+| `Ctrl+Shift+S` | Tachado |
+| `Ctrl+E` | Código inline |
+| `Ctrl+Alt+C` | Bloco de código |
+| `Ctrl+Shift+B` | Citação |
+| `Ctrl+Shift+L` ou `Ctrl+Shift+9` | Lista de verificação |
+| `Ctrl+Shift+7` / `8` | Lista numerada / com marcadores |
+| `Ctrl+Alt+0`..`3` | Texto normal / Título / Subtítulo / Subseção |
 
 ## Como eu lanço uma versão nova
 

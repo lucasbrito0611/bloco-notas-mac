@@ -97,6 +97,7 @@ input { font: inherit; color: inherit; }
   flex-direction: column;
   gap: 1px;
   overflow-y: auto;
+  outline: none;
   transition: transform var(--motion) var(--ease), opacity var(--motion) var(--ease);
 }
 .no-sidebar .sidebar { width: 0; }
@@ -116,6 +117,7 @@ input { font: inherit; color: inherit; }
 .folder svg { color: var(--accent); flex-shrink: 0; }
 .folder:hover { background: var(--hover); }
 .folder.sel { background: var(--folder-sel); }
+.sidebar-inner:focus .folder.sel { background: var(--accent-soft); }
 .folder { animation: fade-in var(--motion) ease-out; }
 .folder .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .folder .count { color: var(--text-3); font-size: 12px; }
@@ -296,6 +298,8 @@ input { font: inherit; color: inherit; }
 }
 .search input { flex: 1; min-width: 0; border: 0; outline: none; background: none; color: var(--text); }
 .search:focus-within { box-shadow: 0 0 0 2px var(--accent-soft); }
+.search-clear { display: grid; place-items: center; padding: 2px; border-radius: 4px; color: var(--text-3); }
+.search-clear:hover { background: var(--hover); color: var(--text); }
 
 /* position: relative para o offsetTop das notas ser medido a partir da lista (veja src/motion.js) */
 .notes { flex: 1; overflow-y: auto; padding: 0 8px 10px; position: relative; outline: none; animation: fade-in var(--motion-fast) ease-out; }
@@ -364,6 +368,7 @@ input { font: inherit; color: inherit; }
   background: var(--editor-bg);
   display: flex;
   flex-direction: column;
+  position: relative;
 }
 /* deixa espaço para os botões minimizar/maximizar/fechar do Windows.
    A formatação fica à esquerda e a busca no meio do espaço que sobra. */
@@ -376,19 +381,19 @@ input { font: inherit; color: inherit; }
 
 /* como no Mac, o texto ocupa a largura toda, alinhado à esquerda */
 .editor { user-select: text; }
-.ProseMirror { outline: none; font-size: 14px; line-height: 1.45; min-height: 60vh; }
+.ProseMirror { outline: none; font-size: calc(14px * var(--editor-scale, 1)); line-height: 1.45; min-height: 60vh; }
 .ProseMirror > * + * { margin-top: 0.15em; }
 .ProseMirror p { margin: 0; }
-.ProseMirror h1 { font-size: 21px; margin: 0 0 6px; font-weight: 700; letter-spacing: -0.01em; }
-.ProseMirror h2 { font-size: 17px; margin: 10px 0 4px; font-weight: 700; }
-.ProseMirror h3 { font-size: 15px; margin: 8px 0 2px; font-weight: 600; }
+.ProseMirror h1 { font-size: calc(21px * var(--editor-scale, 1)); margin: 0 0 6px; font-weight: 700; letter-spacing: -0.01em; }
+.ProseMirror h2 { font-size: calc(17px * var(--editor-scale, 1)); margin: 10px 0 4px; font-weight: 700; }
+.ProseMirror h3 { font-size: calc(15px * var(--editor-scale, 1)); margin: 8px 0 2px; font-weight: 600; }
 /* como no Mac, a primeira linha da nota vira título mesmo sendo parágrafo */
-.ProseMirror > p:first-child { font-size: 21px; font-weight: 700; letter-spacing: -0.01em; margin-bottom: 10px; }
+.ProseMirror > p:first-child { font-size: calc(21px * var(--editor-scale, 1)); font-weight: 700; letter-spacing: -0.01em; margin-bottom: 10px; }
 .ProseMirror a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
 .ProseMirror ul, .ProseMirror ol { padding-left: 24px; margin: 2px 0; }
 .ProseMirror pre {
   font-family: 'Cascadia Mono', Consolas, monospace;
-  font-size: 13px;
+  font-size: calc(13px * var(--editor-scale, 1));
   background: var(--hover);
   border-radius: 6px;
   padding: 8px 12px;
@@ -528,7 +533,7 @@ input { font: inherit; color: inherit; }
   position: relative;
 }
 .ProseMirror th { font-weight: 600; background: var(--hover); text-align: left; }
-.ProseMirror td > p, .ProseMirror th > p { font-size: 14px !important; font-weight: 400; margin: 0 !important; }
+.ProseMirror td > p, .ProseMirror th > p { font-size: calc(14px * var(--editor-scale, 1)) !important; font-weight: 400; margin: 0 !important; }
 .ProseMirror .selectedCell::after {
   content: '';
   position: absolute;
@@ -539,6 +544,186 @@ input { font: inherit; color: inherit; }
 
 .fmt.danger { color: #e5484d; }
 .fmt.danger:hover { background: #e5484d; color: #fff; }
+
+/* ---------- múltiplos cursores e busca na nota ---------- */
+
+.pm-multi-sel {
+  background: var(--accent-soft);
+  border-radius: 2px;
+}
+.pm-extra-cursor {
+  position: relative;
+  display: inline-block;
+  width: 0;
+  height: 1.15em;
+  vertical-align: text-bottom;
+  pointer-events: none;
+}
+.pm-extra-cursor::after {
+  content: '';
+  position: absolute;
+  left: -1px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--accent);
+  animation: pm-blink 1.05s steps(2, start) infinite;
+}
+@keyframes pm-blink { to { visibility: hidden; } }
+
+.pm-find-match {
+  background: rgba(255, 199, 0, 0.28);
+  border-radius: 2px;
+}
+.pm-find-match.active {
+  background: var(--accent);
+  color: #000;
+  border-radius: 2px;
+}
+
+.find-bar {
+  position: absolute;
+  top: 48px;
+  right: 18px;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px 8px;
+  background: var(--popover-bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.18);
+  animation: pop-in var(--motion-fast) ease-out;
+}
+.find-row { display: flex; align-items: center; gap: 4px; }
+.replace-row { padding-left: 28px; }
+.find-input {
+  width: 190px;
+  height: 26px;
+  padding: 0 8px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--search-bg);
+  outline: none;
+  font-size: 12.5px;
+}
+.find-input:focus { border-color: var(--accent); }
+.find-count {
+  min-width: 72px;
+  padding: 0 4px;
+  font-size: 11.5px;
+  color: var(--text-2);
+  text-align: center;
+  white-space: nowrap;
+}
+.find-count.empty { color: #e5484d; }
+.find-btn {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 5px;
+  color: var(--text-2);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+.find-btn:hover:not(:disabled) { background: var(--hover); color: var(--text); }
+.find-btn.on { background: var(--accent-soft); color: var(--text); }
+.find-btn:disabled { opacity: 0.35; }
+.find-action {
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 6px;
+  background: var(--hover);
+  font-size: 12px;
+  font-weight: 500;
+}
+.find-action:hover:not(:disabled) { background: var(--accent); color: #000; }
+.find-action:disabled { opacity: 0.35; }
+
+/* ---------- paleta rápida (Ctrl+P / Ctrl+Shift+P) ---------- */
+
+.palette-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 64px;
+  background: rgba(0, 0, 0, 0.26);
+  -webkit-app-region: no-drag;
+  animation: fade-in 0.12s ease-out;
+}
+.palette-modal {
+  width: min(520px, calc(100vw - 32px));
+  background: var(--popover-bg);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.32);
+  overflow: hidden;
+  animation: pop-in 0.14s ease-out;
+}
+.palette-input {
+  width: 100%;
+  height: 42px;
+  padding: 0 14px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  outline: none;
+  font-size: 13.5px;
+}
+.palette-list {
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.palette-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 10px;
+  border-radius: 7px;
+  text-align: left;
+}
+.palette-item.sel { background: var(--accent-soft); }
+.palette-main { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.palette-label { font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.palette-sub { font-size: 11.5px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.palette-badge { font-size: 11.5px; color: var(--text-3); flex-shrink: 0; }
+.palette-kbd {
+  flex-shrink: 0;
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: var(--hover);
+  border: 1px solid var(--line);
+  font-family: inherit;
+  font-size: 11px;
+  color: var(--text-2);
+}
+.palette-empty { padding: 18px 10px; text-align: center; color: var(--text-3); font-size: 13px; }
+
+.editor-toast {
+  position: absolute;
+  right: 18px;
+  bottom: 14px;
+  z-index: 25;
+  padding: 5px 10px;
+  border-radius: 7px;
+  background: var(--popover-bg);
+  border: 1px solid var(--line);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.14);
+  color: var(--text-2);
+  font-size: 12px;
+  pointer-events: none;
+  animation: fade-in 0.12s ease-out;
+}
 
 ::-webkit-scrollbar { width: 10px; }
 ::-webkit-scrollbar-thumb { background: var(--line); border-radius: 5px; border: 3px solid transparent; background-clip: content-box; }

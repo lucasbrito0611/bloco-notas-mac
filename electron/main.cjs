@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, nativeTheme, protocol, net, shell, dialog } = require('electron')
+const { app, BrowserWindow, ipcMain, nativeTheme, protocol, net, shell, dialog, Menu } = require('electron')
 const { autoUpdater } = require('electron-updater')
 const path = require('node:path')
 const fs = require('node:fs')
@@ -183,6 +183,20 @@ ipcMain.handle('app:version', () => app.getVersion())
 // Faz o Windows tratar o app como "Notas" na barra de tarefas, e não como Electron.
 app.setAppUserModelId('com.lucas.notas')
 app.whenReady().then(() => {
+  // Menu enxuto: evita que o menu padrão do Electron roube Ctrl+=/-/0 (zoom) e Ctrl+C/X (copiar/recortar linha).
+  Menu.setApplicationMenu(
+    Menu.buildFromTemplate([
+      {
+        label: 'Janela',
+        submenu: [
+          ...(isDev ? [{ role: 'reload' }, { role: 'forceReload' }] : []),
+          { role: 'toggleDevTools' },
+          { role: 'togglefullscreen' },
+          { role: 'close' },
+        ],
+      },
+    ]),
+  )
   serveAttachments()
   createWindow()
   if (app.isPackaged) setupUpdates()

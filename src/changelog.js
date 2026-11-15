@@ -3,6 +3,15 @@
 // Antes de `npm version`, adicione aqui a entrada da versão nova: sem ela os testes falham e o release não sai.
 export const CHANGELOG = [
   {
+    version: '1.7.0',
+    items: [
+      'Novos atalhos no estilo do VS Code para editar mais rápido: mover, duplicar, apagar ou selecionar linhas inteiras, recuar texto e ajustar o zoom do editor.',
+      'Múltiplos cursores e seleção de trechos iguais com Ctrl+D, Ctrl+Alt+L, Alt+Clique e setas com Ctrl+Alt.',
+      'Localizar e substituir dentro da nota aberta com Ctrl+F e Ctrl+H (e busca em todas as notas com Ctrl+Shift+F).',
+      'Ir rápido para qualquer nota com Ctrl+P, paleta de comandos com Ctrl+Shift+P e histórico de navegação com Alt+←/→.',
+    ],
+  },
+  {
     version: '1.6.0',
     items: [
       'Visual novo, mais parecido com o Notas do Mac: letras novas, ícones mais finos e texto ocupando a largura toda.',
