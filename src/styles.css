@@ -1,6 +1,7 @@
 :root {
   --accent: #e3a700;
   --accent-soft: rgba(255, 199, 0, 0.32);
+  --link: #0b63ce;
   --text: #1d1d1f;
   --text-2: #6e6e73;
   --text-3: #a1a1a6;
@@ -26,6 +27,7 @@
   :root {
     --accent: #ffcc00;
     --accent-soft: rgba(255, 199, 0, 0.22);
+    --link: #6cb4ff;
     --text: #f2f2f7;
     --text-2: #9b9ba1;
     --text-3: #6c6c70;
@@ -389,7 +391,9 @@ input { font: inherit; color: inherit; }
 .ProseMirror h3 { font-size: calc(15px * var(--editor-scale, 1)); margin: 8px 0 2px; font-weight: 600; }
 /* como no Mac, a primeira linha da nota vira título mesmo sendo parágrafo */
 .ProseMirror > p:first-child { font-size: calc(21px * var(--editor-scale, 1)); font-weight: 700; letter-spacing: -0.01em; margin-bottom: 10px; }
-.ProseMirror a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+.ProseMirror a { color: var(--link); text-decoration: underline; text-underline-offset: 2px; }
+/* mãozinha só com Ctrl apertado (o atributo data-ctrl é ligado em link.js) */
+.ProseMirror[data-ctrl] a[href] { cursor: pointer; }
 .ProseMirror ul, .ProseMirror ol { padding-left: 24px; margin: 2px 0; }
 .ProseMirror pre {
   font-family: 'Cascadia Mono', Consolas, monospace;
