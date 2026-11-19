@@ -5,6 +5,9 @@ contextBridge.exposeInMainWorld('notesApi', {
   save: (data) => ipcRenderer.invoke('notes:save', data),
   exportNotes: (data, referencedUrls) => ipcRenderer.invoke('notes:export', data, referencedUrls),
   importNotes: () => ipcRenderer.invoke('notes:import'),
+  // Uma nota só: format = 'pdf' | 'md' | 'txt'; note = { title, html, doc }.
+  exportNote: (format, note) => ipcRenderer.invoke('note:export', format, note),
+  printNote: (note) => ipcRenderer.invoke('note:print', note),
   saveAttachment:(file) => ipcRenderer.invoke('attachments:save', file),
   openAttachment: (url) => ipcRenderer.invoke('attachments:open', url),
   cleanupAttachments: (referencedUrls) => ipcRenderer.invoke('attachments:cleanup', referencedUrls),
