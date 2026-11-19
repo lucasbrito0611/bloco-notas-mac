@@ -30,6 +30,11 @@ Decidi construir o meu próprio. Este projeto recria a experiência do Notas do 
 - **Pastas** para organizar (criar, renomear e apagar).
 - **Apagadas Recentemente**: nota apagada vai para a lixeira, de onde dá para recuperar. Depois de 30 dias ela some de vez, junto com os anexos.
 - **Exportar e importar**: os botões no pé da barra lateral salvam todas as notas (com imagens e anexos) num arquivo `.notas`. No outro computador, é só importar esse arquivo: as notas novas entram e, se a mesma nota existir dos dois lados, fica a versão editada por último. Para levar o arquivo, uso o Google Drive, um e-mail ou um pendrive. Também serve de backup.
+- **Menu de contexto**: clique direito numa nota para fixar, mover para outra pasta, duplicar ou apagar. Também dá para arrastar a nota até uma pasta.
+- **Ordenação** da lista por data de edição, data de criação ou título.
+- **Links**: colo um endereço sobre um texto selecionado e ele vira link; endereços digitados também. Ctrl+clique abre no navegador.
+- **Exportar uma nota** como PDF, Markdown ou texto, e **imprimir**, pela paleta de comandos (`Ctrl+Shift+P`).
+- **Proteção das notas**: o app salva antes de fechar, só abre uma janela por vez e, se o arquivo de notas for danificado, guarda uma cópia dele em vez de sobrescrevê-lo.
 - **Busca** que ignora acentos.
 - **Notas fixadas** no topo e lista agrupada por data (Hoje, Ontem, 7 dias…).
 - **Visual nativo do Windows 11**, com o efeito Mica na barra lateral e tema claro/escuro automático.
@@ -107,6 +112,8 @@ npm run dev
 | `Ctrl+PageUp` / `Ctrl+PageDown` | Nota anterior / próxima na lista |
 | `Ctrl+=` / `Ctrl+-` / `Ctrl+0` | Aumentar / diminuir / redefinir zoom do editor |
 | `F2` ou duplo clique na pasta | Renomear pasta |
+| `Ctrl+Alt+P` | Imprimir a nota |
+| `Ctrl+clique` num link | Abrir o link no navegador |
 
 ### Edição de linhas e blocos
 
@@ -171,6 +178,9 @@ O ícone fica em `build/icon.svg`. Depois de editar, rode `npm run icon` para ge
 - [x] Tabelas
 - [x] Lixeira ("Apagadas Recentemente")
 - [x] Exportar e importar as notas num arquivo `.notas`
+- [x] Menu de contexto, mover notas entre pastas, duplicar e ordenar
+- [x] Links, exportar uma nota (PDF, Markdown, texto) e imprimir
+- [x] Proteção contra perda de notas (salvar ao fechar, cópia do arquivo danificado)
 - [ ] Sincronização entre computadores
 
 ---

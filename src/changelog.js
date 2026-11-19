@@ -3,6 +3,15 @@
 // Antes de `npm version`, adicione aqui a entrada da versão nova: sem ela os testes falham e o release não sai.
 export const CHANGELOG = [
   {
+    version: '1.8.0',
+    items: [
+      'Clique com o botão direito numa nota para fixar, mover para outra pasta, duplicar ou apagar. Também dá para arrastar a nota até uma pasta e escolher como a lista é ordenada (por edição, criação ou título).',
+      'Exporte a nota aberta como PDF, Markdown ou texto, e imprima, pela paleta de comandos (Ctrl+Shift+P). Para imprimir direto, use Ctrl+Alt+P.',
+      'Links nas notas: cole um endereço sobre um texto selecionado e ele vira link. Para abrir, segure Ctrl e clique.',
+      'Suas notas ficam mais protegidas: o app salva antes de fechar, guarda uma cópia se o arquivo de notas for danificado e só abre uma janela por vez.',
+    ],
+  },
+  {
     version: '1.7.0',
     items: [
       'Novos atalhos no estilo do VS Code para editar mais rápido: mover, duplicar, apagar ou selecionar linhas inteiras, recuar texto e ajustar o zoom do editor.',
