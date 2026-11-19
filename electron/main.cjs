@@ -6,6 +6,8 @@ const { pathToFileURL } = require('node:url')
 const attachments = require('./attachments.cjs')
 const backup = require('./backup.cjs')
 const storage = require('./storage.cjs')
+const exportNote = require('./exportNote.cjs')
+const printNote = require('./printNote.cjs')
 
 const isDev = process.argv.includes('--dev')
 
@@ -119,6 +121,53 @@ async function importNotes() {
   })
   if (canceled || !filePaths[0]) return null
   return backup.readBackup(filePaths[0], attachmentsDir())
+}
+
+// ---------- exportar UMA nota (PDF, Markdown, texto) e imprimir ----------
+
+const EXPORT_FORMATS = {
+  pdf: { title: 'Exportar nota como PDF', filter: { name: 'PDF', extensions: ['pdf'] } },
+  md: { title: 'Exportar nota como Markdown', filter: { name: 'Markdown', extensions: ['md'] } },
+  txt: { title: 'Exportar nota como texto', filter: { name: 'Texto simples', extensions: ['txt'] } },
+}
+
+// Copia as imagens e anexos usados na nota para "<nome>.assets/", ao lado do .md,
+// e devolve a função que diz o caminho relativo de cada um (para os links do Markdown).
+// Só copia endereços notas://anexos/ que existem de verdade: nada de caminhos arbitrários.
+function copyNoteAssets(doc, mdFile) {
+  const folderName = `${path.basename(mdFile, path.extname(mdFile))}.assets`
+  const found = exportNote
+    .assetSources(doc)
+    .map((src) => ({ src, file: attachments.resolveAttachment(attachmentsDir(), src) }))
+    .filter(({ file }) => file && fs.existsSync(file))
+  if (!found.length) return () => null
+  const names = exportNote.assetFileNames(found.map(({ file }) => path.basename(file)))
+  const folder = path.join(path.dirname(mdFile), folderName)
+  fs.mkdirSync(folder, { recursive: true })
+  const paths = new Map()
+  found.forEach(({ src, file }, i) => {
+    fs.copyFileSync(file, path.join(folder, names[i]))
+    paths.set(src, `${folderName}/${names[i]}`)
+  })
+  return (src) => paths.get(src) || null
+}
+
+// note = { title, html, doc } (doc é o JSON do editor). Devolve false se o usuário cancelar.
+async function exportOneNote(format, note) {
+  const kind = EXPORT_FORMATS[format]
+  if (!kind) throw new Error(`Formato desconhecido: ${format}`)
+  // O nome é higienizado aqui também: o processo principal não confia no que vem da interface.
+  const name = exportNote.safeExportName(note.title)
+  const { canceled, filePath } = await dialog.showSaveDialog(win, {
+    title: kind.title,
+    defaultPath: path.join(app.getPath('documents'), `${name}.${kind.filter.extensions[0]}`),
+    filters: [kind.filter],
+  })
+  if (canceled || !filePath) return false
+  if (format === 'pdf') fs.writeFileSync(filePath, await printNote.renderPdf(win, note))
+  else if (format === 'txt') fs.writeFileSync(filePath, exportNote.toPlainText(note.doc))
+  else fs.writeFileSync(filePath, exportNote.toMarkdown(note.doc, { assetPath: copyNoteAssets(note.doc, filePath) }))
+  return true
 }
 
 // notas://anexos/<arquivo> funciona como um "servidor de arquivos" local para as imagens e anexos das notas.
@@ -240,6 +289,8 @@ ipcMain.handle('notes:load', () => loadData())
 ipcMain.handle('notes:save', (_e, data) => saveData(data))
 ipcMain.handle('notes:export', (_e, data, referencedUrls) => exportNotes(data, referencedUrls))
 ipcMain.handle('notes:import', () => importNotes())
+ipcMain.handle('note:export', (_e, format, note) => exportOneNote(format, note))
+ipcMain.handle('note:print', (_e, note) => printNote.printNote(win, note))
 ipcMain.handle('attachments:save', (_e, file) => saveAttachment(file))
 ipcMain.handle('attachments:cleanup', (_e, referencedUrls) => cleanupAttachments(referencedUrls))
 ipcMain.handle('attachments:open', (_e, url) => {

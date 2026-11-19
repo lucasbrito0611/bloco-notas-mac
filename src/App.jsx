@@ -195,8 +195,44 @@ function TableMenu({ editor }) {
   )
 }
 
+// Exportar a nota aberta (PDF, Markdown, texto) ou imprimir. Os mesmos comandos estão na paleta (Ctrl+Shift+P).
+const SHARE_ACTIONS = [
+  { label: 'Exportar como PDF…', format: 'pdf' },
+  { label: 'Exportar como Markdown…', format: 'md' },
+  { label: 'Exportar como texto…', format: 'txt' },
+  { label: 'Imprimir… (Ctrl+Alt+P)', format: 'print' },
+]
+
+function ShareMenu({ onExport, onPrint }) {
+  const { open, setOpen, ref } = usePopover()
+  return (
+    <div className="format-menu" ref={ref}>
+      <button className={`tool ${open ? 'on' : ''}`} title="Exportar ou imprimir nota" onClick={() => setOpen(!open)}>
+        <Icon name="export" />
+      </button>
+      {open && (
+        <div className="popover">
+          {SHARE_ACTIONS.map((a) => (
+            <button
+              key={a.format}
+              className="fmt"
+              onClick={() => {
+                setOpen(false)
+                if (a.format === 'print') onPrint()
+                else onExport(a.format)
+              }}
+            >
+              {a.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // end (a busca) fica na mesma barra da formatação.
-function NoteEditor({ note, onChange, onTogglePin, onRestore, onChordChange, findBar, editorRef, end }) {
+function NoteEditor({ note, onChange, onTogglePin, onRestore, onChordChange, onExport, onPrint, findBar, editorRef, end }) {
   const fileInput = useRef(null)
   const inTrash = Boolean(note.deletedAt)
   const editor = useEditor({
@@ -277,6 +313,7 @@ function NoteEditor({ note, onChange, onTogglePin, onRestore, onChordChange, fin
           <button className={`tool ${note.pinned ? 'on' : ''}`} title={note.pinned ? 'Desafixar nota' : 'Fixar nota'} onClick={onTogglePin}>
             <Icon name="pin" />
           </button>
+          <ShareMenu onExport={onExport} onPrint={onPrint} />
         </div>
         {end}
       </header>
@@ -761,6 +798,41 @@ export default function App() {
     alert(importMessage(result))
   }, [])
 
+  // Exportar UMA nota (a aberta). O conteúdo vem do editor na hora: o HTML para o PDF e o JSON
+  // (a árvore de blocos do TipTap) para o Markdown e o texto. O nome do arquivo sai do título.
+  const noteForExport = useCallback(() => {
+    const editor = editorRef.current
+    if (!note || !editor) return null
+    return { title: titleOf(note), html: editor.getHTML(), doc: editor.getJSON() }
+  }, [note])
+
+  const exportCurrentNote = useCallback(
+    async (format) => {
+      const payload = noteForExport()
+      if (!payload) return
+      try {
+        await window.notesApi.exportNote(format, payload)
+      } catch (err) {
+        alert(`Não foi possível exportar a nota.
+
+${ipcError(err)}`)
+      }
+    },
+    [noteForExport],
+  )
+
+  const printCurrentNote = useCallback(async () => {
+    const payload = noteForExport()
+    if (!payload) return
+    try {
+      await window.notesApi.printNote(payload)
+    } catch (err) {
+      alert(`Não foi possível imprimir a nota.
+
+${ipcError(err)}`)
+    }
+  }, [noteForExport])
+
   const newFolder = useCallback(() => {
     const f = { id: uid(), name: 'Nova Pasta' }
     setData((d) => ({ ...d, folders: [...d.folders, f] }))
@@ -859,6 +931,14 @@ export default function App() {
       ...(folderId !== ALL && folderId !== TRASH
         ? [{ id: 'rename-folder', label: 'Renomear pasta atual', shortcut: 'F2', run: () => setRenaming(folderId) }]
         : []),
+      ...(note
+        ? [
+            { id: 'export-pdf', label: 'Exportar nota como PDF', run: () => exportCurrentNote('pdf') },
+            { id: 'export-md', label: 'Exportar nota como Markdown', run: () => exportCurrentNote('md') },
+            { id: 'export-txt', label: 'Exportar nota como texto', run: () => exportCurrentNote('txt') },
+            { id: 'print-note', label: 'Imprimir nota', shortcut: 'Ctrl+Alt+P', run: printCurrentNote },
+          ]
+        : []),
       { id: 'export', label: 'Exportar notas (.notas)', run: exportAll },
       { id: 'import', label: 'Importar notas (.notas)', run: importAll },
       { id: 'news', label: 'Ver novidades da versão', run: () => setNews({ title: 'Novidades', entries: allNews(currentVersion) }) },
@@ -866,7 +946,7 @@ export default function App() {
 
     const q = normalize(palette.query.trim())
     return q ? commands.filter((c) => normalize(c.label).includes(q) || normalize(c.shortcut || '').includes(q)) : commands
-  }, [palette, data, note, folderId, currentVersion, newNote, newFolder, focusSidebar, stepHistory, applyZoom, openFind, updateNote, moveNoteTo, duplicate, deleteNote, restore, exportAll, importAll, navigateToNote])
+  }, [palette, data, note, folderId, currentVersion, newNote, newFolder, focusSidebar, stepHistory, applyZoom, openFind, updateNote, moveNoteTo, duplicate, deleteNote, restore, exportAll, importAll, navigateToNote, exportCurrentNote, printCurrentNote])
 
   const contextMenuItems = useMemo(() => {
     if (!contextMenu || !data) return null
@@ -913,8 +993,16 @@ export default function App() {
   // atalhos globais (app + navegação VS Code)
   useEffect(() => {
     const onKey = (e) => {
-      if (e.getModifierState?.('AltGraph')) return
       if (showUpdateModal(update) || news || renaming || contextMenu) return
+      // Ctrl+Alt+P: imprimir (Ctrl+P já é "ir para nota"). Vem antes do teste de AltGr porque, em
+      // teclados como o ABNT2, o Windows pode marcar Ctrl+Alt como AltGr. Conferir e.key === 'p'
+      // garante que não é um AltGr digitando outra letra (no US-Internacional, AltGr+P digita "ö").
+      if (!palette && e.ctrlKey && e.altKey && !e.shiftKey && e.key.toLowerCase() === 'p') {
+        e.preventDefault()
+        printCurrentNote()
+        return
+      }
+      if (e.getModifierState?.('AltGraph')) return
 
       const mod = e.ctrlKey || e.metaKey
       const k = e.key.toLowerCase()
@@ -975,7 +1063,7 @@ export default function App() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [update, news, renaming, contextMenu, palette, findOpen, sidebarOpen, folderId, newNote, newFolder, openFind, focusSidebar, stepHistory, stepNoteInList, applyZoom])
+  }, [update, news, renaming, contextMenu, palette, findOpen, sidebarOpen, folderId, newNote, newFolder, openFind, focusSidebar, stepHistory, stepNoteInList, applyZoom, printCurrentNote])
 
   if (!data) return null
 
@@ -1247,6 +1335,8 @@ export default function App() {
             onTogglePin={() => updateNote(note.id, { pinned: !note.pinned })}
             onRestore={() => restore(note.id)}
             onChordChange={setChord}
+            onExport={exportCurrentNote}
+            onPrint={printCurrentNote}
             findBar={findBar}
             end={barEnd}
           />
