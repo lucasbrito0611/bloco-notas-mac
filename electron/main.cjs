@@ -201,7 +201,7 @@ function createWindow() {
 
   // Links dentro das notas abrem no navegador, não dentro do app.
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (/^https?:/.test(url)) shell.openExternal(url)
+    if (/^(https?|mailto):/i.test(url)) shell.openExternal(url)
     return { action: 'deny' }
   })
 

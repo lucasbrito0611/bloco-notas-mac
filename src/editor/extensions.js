@@ -10,12 +10,13 @@ import { Indent } from './indent.js'
 import { VSCodeBlocks } from './blocks.js'
 import { MultiCursor, multiCursorPluginKey } from './multiCursor.js'
 import { NoteSearch } from './search.js'
+import { linkOptions, LinkOpenOnCtrlClick } from './link.js'
 
 // Lista de extensões do editor, compartilhada entre o app e os testes.
 // onFiles(editor, files, pos) é chamado quando o usuário cola ou arrasta arquivos.
 export function buildExtensions({ onFiles, onChordChange, onCopyLine } = {}) {
   const extensions = [
-    StarterKit,
+    StarterKit.configure({ link: linkOptions }),
     TaskList,
     TaskItem.configure({ nested: true }),
     Placeholder.configure({ placeholder: ({ pos }) => (pos === 0 ? 'Título' : '') }),
@@ -29,6 +30,7 @@ export function buildExtensions({ onFiles, onChordChange, onCopyLine } = {}) {
       onCopyLine,
     }),
     NoteSearch,
+    LinkOpenOnCtrlClick,
   ]
   if (onFiles) {
     extensions.push(
