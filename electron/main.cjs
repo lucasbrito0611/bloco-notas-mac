@@ -5,28 +5,61 @@ const fs = require('node:fs')
 const { pathToFileURL } = require('node:url')
 const attachments = require('./attachments.cjs')
 const backup = require('./backup.cjs')
+const storage = require('./storage.cjs')
 
 const isDev = process.argv.includes('--dev')
 
 // Permite rodar com outra pasta de dados (usado nos testes, para não mexer nas notas de verdade).
 if (process.env.NOTAS_DATA_DIR) app.setPath('userData', process.env.NOTAS_DATA_DIR)
 
-const dataFile = () => path.join(app.getPath('userData'), 'notes.json')
 const attachmentsDir = () => path.join(app.getPath('userData'), 'anexos')
 
+// Resultado da última leitura do notes.json (ver storage.cjs). Decide se podemos gravar e limpar anexos.
+let leitura = null
+
 function loadData() {
-  try {
-    return JSON.parse(fs.readFileSync(dataFile(), 'utf8'))
-  } catch {
-    return null
-  }
+  leitura = storage.readNotes(app.getPath('userData'))
+  avisarLeitura(leitura)
+  return leitura.data
+}
+
+// Avisa o usuário, sem travar a abertura, quando o arquivo de notas estava danificado.
+function avisarLeitura(r) {
+  const pasta = app.getPath('userData')
+  const aviso = {
+    recuperado: {
+      message: r.copia ? 'O arquivo de notas estava danificado.' : 'O arquivo de notas não estava lá.',
+      detail:
+        'Recuperei suas notas do salvamento que tinha sido interrompido.' +
+        (r.copia ? ` O arquivo danificado foi guardado em:\n${r.copia}` : ''),
+    },
+    corrompido: {
+      message: 'Não consegui ler o arquivo de notas.',
+      detail:
+        'O arquivo estava danificado, então o app abriu com um caderno novo. ' +
+        `Uma cópia do arquivo danificado foi guardada em:\n${r.copia}\n\n` +
+        `Se existir, o arquivo ${storage.BACKUP} (em ${pasta}) guarda o estado de quando o app abriu pela última vez.`,
+    },
+    erro: {
+      message: 'Não consegui ler o arquivo de notas.',
+      detail:
+        `O arquivo está em ${path.join(pasta, storage.FILE)} e não consegui guardar uma cópia dele. ` +
+        'Para não piorar a situação, nada será salvo nesta sessão. Feche o app e guarde esse arquivo em outro lugar antes de abrir de novo.',
+    },
+  }[r.status]
+  if (!aviso) return
+  const opcoes = { type: 'warning', title: 'Notas', ...aviso }
+  // Sem janela ainda, a caixa de mensagem fica sem dono (o Electron aceita os dois formatos).
+  const mostrar = win ? dialog.showMessageBox(win, opcoes) : dialog.showMessageBox(opcoes)
+  mostrar.catch(() => {})
 }
 
 function saveData(data) {
-  // Escreve num arquivo temporário e renomeia, para não corromper se o app fechar no meio.
-  const tmp = dataFile() + '.tmp'
-  fs.writeFileSync(tmp, JSON.stringify(data))
-  fs.renameSync(tmp, dataFile())
+  if (leitura?.status === 'erro') {
+    throw new Error('Não foi possível salvar: o arquivo de notas está danificado e nenhuma cópia pôde ser guardada.')
+  }
+  if (!storage.isValid(data)) throw new Error('Dados de notas inválidos: nada foi salvo.')
+  storage.saveNotes(app.getPath('userData'), data)
 }
 
 function saveAttachment({ name, type, bytes }) {
@@ -45,6 +78,8 @@ function saveAttachment({ name, type, bytes }) {
 // Apaga do disco os anexos que nenhuma nota usa mais (ex.: a nota foi apagada de vez).
 // Só apaga arquivos com mais de 1 hora: um anexo recém-colado pode ainda não ter sido salvo na nota.
 function cleanupAttachments(referencedUrls) {
+  // Com o arquivo de notas danificado, a lista de anexos em uso não é confiável: não apaga nada.
+  if (leitura?.status === 'corrompido' || leitura?.status === 'erro') return 0
   if (!fs.existsSync(attachmentsDir())) return 0
   const oneHourAgo = Date.now() - 60 * 60 * 1000
   const orphans = attachments
@@ -97,6 +132,22 @@ function serveAttachments() {
 
 let win
 
+// Só uma janela do Notas por vez: duas instâncias gravariam o mesmo notes.json uma por cima da outra.
+// Como um "app já aberto" no navegador: a segunda vez só traz a primeira para frente.
+const primeiraInstancia = app.requestSingleInstanceLock()
+if (!primeiraInstancia) app.quit()
+app.on('second-instance', () => {
+  if (!win) return
+  if (win.isMinimized()) win.restore()
+  win.show()
+  win.focus()
+})
+
+// Fechamento: antes de fechar, a interface grava o que foi digitado nos últimos 300 ms e confirma.
+let fechamentoAprovado = false // true depois da gravação: o próximo "close" fecha de verdade
+let confirmarGravacao = null // função que fecha a janela, guardada enquanto a interface não confirma
+const TEMPO_LIMITE_GRAVACAO = 2000 // rede de segurança: se a interface travar, fecha mesmo assim
+
 function createWindow() {
   const dark = nativeTheme.shouldUseDarkColors
   win = new BrowserWindow({
@@ -125,6 +176,23 @@ function createWindow() {
     win.setTitleBarOverlay({
       symbolColor: nativeTheme.shouldUseDarkColors ? '#e8e8e8' : '#1f1f1f',
     })
+  })
+
+  // Primeiro "close" é cancelado para dar tempo de gravar; depois a janela fecha de verdade.
+  win.on('close', (event) => {
+    if (fechamentoAprovado) return
+    event.preventDefault()
+    if (confirmarGravacao) return // já está esperando a interface gravar
+    const fechar = () => {
+      clearTimeout(rede)
+      confirmarGravacao = null
+      fechamentoAprovado = true
+      if (win && !win.isDestroyed()) win.close()
+    }
+    const rede = setTimeout(fechar, TEMPO_LIMITE_GRAVACAO)
+    confirmarGravacao = fechar
+    if (win.webContents.isDestroyed()) return fechar()
+    win.webContents.send('app:before-close')
   })
 
   // Links dentro das notas abrem no navegador, não dentro do app.
@@ -179,10 +247,13 @@ ipcMain.handle('update:download', () => autoUpdater.downloadUpdate())
 // quitAndInstall(isSilent, isForceRunAfter): instala sem mostrar a tela do instalador e reabre o app sozinho.
 ipcMain.handle('update:install', () => autoUpdater.quitAndInstall(true, true))
 ipcMain.handle('app:version', () => app.getVersion())
+// A interface avisa que já gravou; aí a janela pode fechar.
+ipcMain.handle('app:close-ready', () => confirmarGravacao?.())
 
 // Faz o Windows tratar o app como "Notas" na barra de tarefas, e não como Electron.
 app.setAppUserModelId('com.lucas.notas')
 app.whenReady().then(() => {
+  if (!primeiraInstancia) return
   // Menu enxuto: evita que o menu padrão do Electron roube Ctrl+=/-/0 (zoom) e Ctrl+C/X (copiar/recortar linha).
   Menu.setApplicationMenu(
     Menu.buildFromTemplate([

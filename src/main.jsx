@@ -29,6 +29,9 @@ if (!window.notesApi) {
     downloadUpdate: async () => {},
     installUpdate: async () => {},
     onUpdate: () => () => {},
+    // No navegador, o localStorage já grava na hora: não há nada a fazer antes de fechar.
+    onBeforeClose: () => () => {},
+    confirmClose: async () => {},
   }
 }
 

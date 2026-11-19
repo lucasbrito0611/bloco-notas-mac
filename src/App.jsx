@@ -447,6 +447,19 @@ export default function App() {
     return unsubscribe
   }, [])
 
+  // Ao fechar a janela, grava na hora o que foi digitado nos últimos 300 ms e só então confirma.
+  useEffect(
+    () =>
+      window.notesApi.onBeforeClose(() => {
+        const current = dataRef.current
+        const saved = current ? window.notesApi.save(current) : Promise.resolve()
+        saved
+          .catch((err) => console.error('Falha ao gravar antes de fechar:', err))
+          .finally(() => window.notesApi.confirmClose())
+      }),
+    [],
+  )
+
   useEffect(() => {
     localStorage.setItem('barraLateralAberta', sidebarOpen ? 'sim' : 'nao')
   }, [sidebarOpen])

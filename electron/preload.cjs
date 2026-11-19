@@ -17,4 +17,11 @@ contextBridge.exposeInMainWorld('notesApi', {
     ipcRenderer.on('update:status', listener)
     return () => ipcRenderer.removeListener('update:status', listener)
   },
+  // Antes de fechar a janela, o processo principal pede para gravar; confirmClose() avisa que já gravou.
+  onBeforeClose: (callback) => {
+    const listener = () => callback()
+    ipcRenderer.on('app:before-close', listener)
+    return () => ipcRenderer.removeListener('app:before-close', listener)
+  },
+  confirmClose: () => ipcRenderer.invoke('app:close-ready'),
 })
