@@ -350,14 +350,14 @@ div[data-attachment] .att-icon, div[data-attachment] .att-size { display: none; 
 
 // Página HTML completa que a janela oculta transforma em PDF (ou manda para a impressora).
 // fontCss: as regras @font-face da Inter, já com a fonte embutida (montadas no main.cjs).
-// A política de segurança (CSP) proíbe scripts e qualquer coisa da internet:
-// só imagens dos anexos (notas://) e o que já está dentro da página.
+// A política de segurança (CSP) proíbe scripts e qualquer outra coisa de fora. Só passam imagens:
+// as dos anexos (notas://) e as coladas da web (http/https), que o editor também mostra.
 function buildPrintHtml({ title, html, fontCss = '' }) {
   return `<!doctype html>
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src notas: data:; style-src 'unsafe-inline'; font-src data:">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src notas: data: https: http:; style-src 'unsafe-inline'; font-src data:">
 <title>${escapeHtml(title || 'Nota')}</title>
 <style>${fontCss}${PRINT_CSS}</style>
 </head>

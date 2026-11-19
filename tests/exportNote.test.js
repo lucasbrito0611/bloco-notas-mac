@@ -154,6 +154,8 @@ describe('buildPrintHtml', () => {
     const page = buildPrintHtml({ title: '<script>x</script>', html: '<p>oi</p>' })
     expect(page).toContain('<title>&lt;script&gt;x&lt;/script&gt;</title>')
     expect(page).toContain("default-src 'none'")
+    expect(page).not.toMatch(/script-src/)
+    expect(page).toContain('img-src notas: data: https: http:')
     expect(page).toContain('<body><p>oi</p></body>')
   })
 })

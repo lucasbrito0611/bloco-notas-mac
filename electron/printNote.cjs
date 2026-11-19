@@ -61,8 +61,12 @@ async function withPrintWindow(parent, { title, html }, fn) {
   printWin.webContents.on('will-navigate', (e) => e.preventDefault())
   try {
     await printWin.loadFile(tmp)
+    // No máximo 5 segundos: uma imagem da web num site lento não pode travar a exportação.
     await printWin.webContents.executeJavaScript(
-      'document.fonts.ready.then(() => Promise.all([...document.images].map((i) => i.decode().catch(() => {}))))',
+      `Promise.race([
+        document.fonts.ready.then(() => Promise.all([...document.images].map((i) => i.decode().catch(() => {})))),
+        new Promise((ok) => setTimeout(ok, 5000)),
+      ])`,
     )
     return await fn(printWin.webContents)
   } finally {
