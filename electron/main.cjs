@@ -37,8 +37,10 @@ function avisarLeitura(r) {
       message: 'Não consegui ler o arquivo de notas.',
       detail:
         'O arquivo estava danificado, então o app abriu com um caderno novo. ' +
-        `Uma cópia do arquivo danificado foi guardada em:\n${r.copia}\n\n` +
-        `Se existir, o arquivo ${storage.BACKUP} (em ${pasta}) guarda o estado de quando o app abriu pela última vez.`,
+        `Uma cópia do arquivo danificado foi guardada em:\n${r.copia}` +
+        (r.backupAntigo
+          ? `\n\nA última cópia de segurança boa (de quando o app abriu pela última vez) está em:\n${r.backupAntigo}`
+          : ''),
     },
     erro: {
       message: 'Não consegui ler o arquivo de notas.',
@@ -82,8 +84,10 @@ function cleanupAttachments(referencedUrls) {
   if (leitura?.status === 'corrompido' || leitura?.status === 'erro') return 0
   if (!fs.existsSync(attachmentsDir())) return 0
   const oneHourAgo = Date.now() - 60 * 60 * 1000
+  // Anexos que só as cópias de segurança (notes.corrompido-*, notes.backup*) ainda usam também ficam.
+  const emUso = [...referencedUrls, ...storage.urlsDeCopias(app.getPath('userData'))]
   const orphans = attachments
-    .orphanFiles(fs.readdirSync(attachmentsDir()), referencedUrls)
+    .orphanFiles(fs.readdirSync(attachmentsDir()), emUso)
     .filter((name) => fs.statSync(path.join(attachmentsDir(), name)).mtimeMs < oneHourAgo)
   for (const name of orphans) fs.rmSync(path.join(attachmentsDir(), name), { force: true })
   return orphans.length

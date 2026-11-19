@@ -4,7 +4,7 @@ import os from 'node:os'
 import path from 'node:path'
 import storage from '../electron/storage.cjs'
 
-const { readNotes, saveNotes, stamp } = storage
+const { readNotes, saveNotes, stamp, urlsDeCopias } = storage
 
 let dir
 beforeEach(() => (dir = fs.mkdtempSync(path.join(os.tmpdir(), 'notas-storage-'))))
@@ -17,10 +17,11 @@ const notas = {
   notes: [{ id: 'a', folderId: 'notes', pinned: false, html: '<p>oi</p>', text: 'oi' }],
 }
 const copias = () => fs.readdirSync(dir).filter((n) => n.startsWith('notes.corrompido-'))
+const preservados = () => fs.readdirSync(dir).filter((n) => n.startsWith('notes.backup-antigo-'))
 
 describe('leitura do notes.json', () => {
   it('primeira execução: sem arquivo, devolve vazio e não cria nada', () => {
-    expect(readNotes(dir)).toEqual({ status: 'vazio', data: null, copia: null })
+    expect(readNotes(dir)).toEqual({ status: 'vazio', data: null, copia: null, backupAntigo: null })
     expect(fs.readdirSync(dir)).toEqual([])
   })
 
@@ -41,6 +42,11 @@ describe('leitura do notes.json', () => {
     expect(path.basename(r.copia)).toMatch(/^notes\.corrompido-\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}-\d{3}\.json$/)
     expect(fs.readFileSync(r.copia, 'utf8')).toBe(ruim)
     expect(fs.readFileSync(file(), 'utf8')).toBe(ruim)
+  })
+
+  it('aceita o BOM (marca UTF-8 no começo) que alguns editores põem no arquivo', () => {
+    fs.writeFileSync(file(), '﻿' + JSON.stringify(notas), 'utf8')
+    expect(readNotes(dir).status).toBe('ok')
   })
 
   it('formato inesperado (folders/notes que não são listas) é tratado como corrompido', () => {
@@ -90,6 +96,59 @@ describe('leitura do notes.json', () => {
     expect(r.status).toBe('erro')
     expect(r.data).toBeNull()
     expect(fs.statSync(file()).isDirectory()).toBe(true)
+  })
+})
+
+describe('a última cópia boa não se perde', () => {
+  it('abrir válido → arquivo estraga → abrir (vazio) → abrir válido de novo: a cópia de antes continua preservada', () => {
+    // 1. Abertura válida: o notes.backup.json passa a guardar as notas originais.
+    saveNotes(dir, notas)
+    expect(readNotes(dir).status).toBe('ok')
+
+    // 2. O arquivo estraga. O app abre com caderno novo, e o backup antigo é guardado antes de ser trocado.
+    fs.writeFileSync(file(), 'lixo')
+    const ruim = readNotes(dir)
+    expect(ruim.status).toBe('corrompido')
+    expect(ruim.backupAntigo).not.toBeNull()
+    expect(preservados()).toHaveLength(1)
+
+    // 3. O app grava o caderno novo e, na abertura seguinte, o arquivo é válido: o backup é trocado por ele.
+    const novo = { folders: [{ id: 'notes', name: 'Notas' }], notes: [] }
+    saveNotes(dir, novo)
+    expect(readNotes(dir).status).toBe('ok')
+    expect(JSON.parse(fs.readFileSync(path.join(dir, 'notes.backup.json'), 'utf8'))).toEqual(novo)
+
+    // Mas a cópia preservada ainda tem as notas originais.
+    expect(JSON.parse(fs.readFileSync(ruim.backupAntigo, 'utf8'))).toEqual(notas)
+  })
+
+  it('sem backup anterior, não cria cópia de backup nenhuma', () => {
+    fs.writeFileSync(file(), 'lixo')
+    const r = readNotes(dir)
+    expect(r.status).toBe('corrompido')
+    expect(r.backupAntigo).toBeNull()
+    expect(preservados()).toEqual([])
+  })
+})
+
+describe('anexos guardados só nas cópias', () => {
+  it('urlsDeCopias lê os endereços de notes.corrompido-*.json e notes.backup*.json, e ignora outros arquivos', () => {
+    const html = (url) => JSON.stringify({ folders: [], notes: [{ html: `<img src="${url}">` }] })
+    fs.writeFileSync(path.join(dir, 'notes.corrompido-2026-01-01_00-00-00-000.json'), '{"x": "notas://anexos/a1-foto.png\\"')
+    fs.writeFileSync(path.join(dir, 'notes.backup.json'), html('notas://anexos/b2-planilha.xlsx'))
+    fs.writeFileSync(path.join(dir, 'notes.backup-antigo-2026-01-01_00-00-00-000.json'), html('notas://anexos/c3-pdf.pdf'))
+    fs.writeFileSync(path.join(dir, 'notes.json'), html('notas://anexos/d4-ignorado.png'))
+    fs.writeFileSync(path.join(dir, 'outro.txt'), 'notas://anexos/e5-ignorado.png')
+
+    expect(urlsDeCopias(dir).sort()).toEqual([
+      'notas://anexos/a1-foto.png',
+      'notas://anexos/b2-planilha.xlsx',
+      'notas://anexos/c3-pdf.pdf',
+    ])
+  })
+
+  it('pasta sem cópias: lista vazia', () => {
+    expect(urlsDeCopias(dir)).toEqual([])
   })
 })
 
