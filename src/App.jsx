@@ -6,10 +6,14 @@ import { useListMotion, collapse } from './motion.js'
 import { CHANGELOG, newsSince } from './changelog.js'
 import { FindBar } from './components/FindBar.jsx'
 import { PaletteModal } from './components/PaletteModal.jsx'
+import { ContextMenu } from './components/ContextMenu.jsx'
 import appIcon from '../build/icon.png'
 import {
   ALL,
   DEFAULT_FOLDER,
+  DEFAULT_SORT,
+  SORT_OPTIONS,
+  isValidSort,
   uid,
   initialData,
   titleOf,
@@ -20,6 +24,8 @@ import {
   longDate,
   filterNotes,
   groupNotes,
+  moveNote,
+  duplicateNote,
   removeFolder,
   TRASH,
   TRASH_DAYS,
@@ -58,6 +64,7 @@ const ICONS = {
   export: 'M12 3v12M17 8l-5-5-5 5M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4',
   import: 'M12 15V3M7 10l5 5 5-5M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4',
   close: 'M18 6 6 18M6 6l12 12',
+  sort: 'M3 8l4-4 4 4M7 4v16M21 16l-4 4-4-4M17 20V4',
 }
 
 function Icon({ name, size = 18 }) {
@@ -395,6 +402,13 @@ export default function App() {
   const [renaming, setRenaming] = useState(null)
   // Como no Mac, as pastas começam escondidas e o app lembra se você deixou a barra aberta.
   const [sidebarOpen, setSidebarOpen] = useState(() => localStorage.getItem('barraLateralAberta') === 'sim')
+  const [sortBy, setSortBy] = useState(() => {
+    const saved = localStorage.getItem('ordenacaoNotas')
+    return isValidSort(saved) ? saved : DEFAULT_SORT
+  })
+  const [contextMenu, setContextMenu] = useState(null)
+  const [dragNoteId, setDragNoteId] = useState(null)
+  const [dropFolderId, setDropFolderId] = useState(null)
   const [editorScale, setEditorScale] = useState(() => clampZoom(parseFloat(localStorage.getItem('zoomEditor')) || 1))
   const [zoomNotice, setZoomNotice] = useState(null)
   const [chord, setChord] = useState(null)
@@ -452,6 +466,10 @@ export default function App() {
   }, [sidebarOpen])
 
   useEffect(() => {
+    localStorage.setItem('ordenacaoNotas', sortBy)
+  }, [sortBy])
+
+  useEffect(() => {
     localStorage.setItem('zoomEditor', String(editorScale))
   }, [editorScale])
 
@@ -488,8 +506,8 @@ export default function App() {
   }, [update.phase])
 
   const note = data?.notes.find((n) => n.id === noteId)
-  const visibleNotes = useMemo(() => (data ? filterNotes(data.notes, { folderId, query }) : []), [data, folderId, query])
-  const grouped = useMemo(() => groupNotes(visibleNotes), [visibleNotes])
+  const visibleNotes = useMemo(() => (data ? filterNotes(data.notes, { folderId, query, sortBy }) : []), [data, folderId, query, sortBy])
+  const grouped = useMemo(() => groupNotes(visibleNotes, Date.now(), sortBy), [visibleNotes, sortBy])
 
   // Como no Mac: uma nota vazia some quando você sai dela.
   const selectNote = useCallback(
@@ -613,29 +631,88 @@ export default function App() {
 
   // Fora do lixo, apagar manda a nota para "Apagadas Recentemente". Dentro dele, apaga de vez.
   // Primeiro a nota recolhe na lista; só depois sai dos dados.
+  const deleteNoteById = useCallback(
+    (id) => {
+      const target = dataRef.current?.notes.find((n) => n.id === id)
+      if (!target || deletingRef.current) return
+      if (target.deletedAt && !confirm(`Apagar "${titleOf(target)}" permanentemente? Essa ação não pode ser desfeita.`)) return
+      const { deletedAt } = target
+      const idx = visibleNotes.findIndex((n) => n.id === id)
+      const nextId = (visibleNotes[idx + 1] || visibleNotes[idx - 1])?.id ?? null
+      // Se for a única nota do grupo ("Hoje", "Ontem"...), recolhe o grupo inteiro, com o título junto.
+      const row = listRef.current?.querySelector(`[data-flip="${CSS.escape(id)}"]`)
+      const group = row?.parentElement
+      deletingRef.current = true
+      collapse(group?.querySelectorAll('.note-item').length === 1 ? group : row).then(() => {
+        deletingRef.current = false
+        if (deletedAt) removeForever((d) => deleteForever(d, id))
+        else setData((d) => moveToTrash(d, id))
+        // Se a pessoa clicou em outra nota durante a animação, fica nela.
+        setNoteId((cur) => (cur === id ? nextId : cur))
+      })
+    },
+    [visibleNotes, removeForever],
+  )
+
   const deleteNote = useCallback(() => {
-    if (!note || deletingRef.current) return
-    if (note.deletedAt && !confirm(`Apagar "${titleOf(note)}" permanentemente? Essa ação não pode ser desfeita.`)) return
-    const { id, deletedAt } = note
-    const idx = visibleNotes.findIndex((n) => n.id === id)
-    const nextId = (visibleNotes[idx + 1] || visibleNotes[idx - 1])?.id ?? null
-    // Se for a única nota do grupo ("Hoje", "Ontem"...), recolhe o grupo inteiro, com o título junto.
-    const row = listRef.current?.querySelector(`[data-flip="${CSS.escape(id)}"]`)
-    const group = row?.parentElement
-    deletingRef.current = true
-    collapse(group?.querySelectorAll('.note-item').length === 1 ? group : row).then(() => {
-      deletingRef.current = false
-      if (deletedAt) removeForever((d) => deleteForever(d, id))
-      else setData((d) => moveToTrash(d, id))
-      // Se a pessoa clicou em outra nota durante a animação, fica nela.
-      setNoteId((cur) => (cur === id ? nextId : cur))
-    })
-  }, [note, visibleNotes, removeForever])
+    if (note) deleteNoteById(note.id)
+  }, [note, deleteNoteById])
 
   const restore = useCallback((id) => {
     setData((d) => restoreNote(d, id))
     setFolderId(ALL)
+    setNoteId(id)
   }, [])
+
+  // Move a nota para outra pasta. Se estivermos dentro de uma pasta específica,
+  // a nota recolhe antes de sair da lista (igual ao apagar), mantendo a animação coerente.
+  const moveNoteTo = useCallback(
+    (id, targetFolderId) => {
+      const current = dataRef.current
+      if (!current) return
+      const target = current.notes.find((n) => n.id === id)
+      if (!target || target.deletedAt || target.folderId === targetFolderId) return
+      if (!current.folders.some((f) => f.id === targetFolderId)) return
+
+      const leavesList = folderId !== ALL && folderId !== targetFolderId
+      if (!leavesList) {
+        setData((d) => moveNote(d, id, targetFolderId))
+        return
+      }
+      if (deletingRef.current) return
+      const idx = visibleNotes.findIndex((n) => n.id === id)
+      const nextId = (visibleNotes[idx + 1] || visibleNotes[idx - 1])?.id ?? null
+      const row = listRef.current?.querySelector(`[data-flip="${CSS.escape(id)}"]`)
+      const group = row?.parentElement
+      deletingRef.current = true
+      collapse(group?.querySelectorAll('.note-item').length === 1 ? group : row).then(() => {
+        deletingRef.current = false
+        setData((d) => moveNote(d, id, targetFolderId))
+        setNoteId((cur) => (cur === id ? nextId : cur))
+      })
+    },
+    [folderId, visibleNotes],
+  )
+
+  // Duplica a nota na mesma pasta e já abre a cópia; se outra nota vazia estava aberta, limpa (como no Mac).
+  const duplicate = useCallback(
+    (id) => {
+      const source = dataRef.current?.notes.find((n) => n.id === id)
+      if (!source || source.deletedAt) return
+      const newId = uid()
+      setData((d) => {
+        const { data: next, note: copy } = duplicateNote(d, id, Date.now(), newId)
+        if (!copy) return d
+        const cur = next.notes.find((n) => n.id === noteId)
+        if (cur && cur.id !== id && isBlank(cur)) {
+          return { ...next, notes: next.notes.filter((n) => n.id !== cur.id) }
+        }
+        return next
+      })
+      setNoteId(newId)
+    },
+    [noteId],
+  )
 
   const clearTrash = () => {
     const total = countNotes(data.notes, TRASH)
@@ -707,6 +784,18 @@ export default function App() {
         },
       }))
     }
+    if (palette.mode === 'moveNote') {
+      if (!note || note.deletedAt) return []
+      const q = normalize(palette.query.trim())
+      return data.folders
+        .filter((f) => !q || normalize(f.name).includes(q))
+        .map((f) => ({
+          id: f.id,
+          label: f.name,
+          badge: f.id === note.folderId ? 'Atual' : String(countNotes(data.notes, f.id)),
+          run: () => moveNoteTo(note.id, f.id),
+        }))
+    }
 
     const canEditNote = Boolean(note && !note.deletedAt)
     const commands = [
@@ -732,6 +821,8 @@ export default function App() {
               label: note.pinned ? 'Desafixar nota' : 'Fixar nota',
               run: () => updateNote(note.id, { pinned: !note.pinned }),
             },
+            { id: 'move-note', label: 'Mover nota para pasta…', run: () => setPalette({ mode: 'moveNote', query: '' }) },
+            { id: 'duplicate-note', label: 'Duplicar nota', run: () => duplicate(note.id) },
             { id: 'del-note', label: 'Mover nota para lixeira', shortcut: 'Delete', run: deleteNote },
             { id: 'fmt-h1', label: 'Formatar como Título', shortcut: 'Ctrl+Alt+1', run: () => editorRef.current?.chain().focus().setHeading({ level: 1 }).run() },
             { id: 'fmt-h2', label: 'Formatar como Cabeçalho', shortcut: 'Ctrl+Alt+2', run: () => editorRef.current?.chain().focus().setHeading({ level: 2 }).run() },
@@ -762,13 +853,55 @@ export default function App() {
 
     const q = normalize(palette.query.trim())
     return q ? commands.filter((c) => normalize(c.label).includes(q) || normalize(c.shortcut || '').includes(q)) : commands
-  }, [palette, data, note, folderId, currentVersion, newNote, newFolder, focusSidebar, stepHistory, applyZoom, openFind, updateNote, deleteNote, restore, exportAll, importAll, navigateToNote])
+  }, [palette, data, note, folderId, currentVersion, newNote, newFolder, focusSidebar, stepHistory, applyZoom, openFind, updateNote, moveNoteTo, duplicate, deleteNote, restore, exportAll, importAll, navigateToNote])
+
+  const contextMenuItems = useMemo(() => {
+    if (!contextMenu || !data) return null
+    if (contextMenu.type === 'sort') {
+      return SORT_OPTIONS.map((o) => ({
+        id: o.id,
+        label: o.label,
+        active: sortBy === o.id,
+        onSelect: () => setSortBy(o.id),
+      }))
+    }
+    const target = data.notes.find((n) => n.id === contextMenu.noteId)
+    if (!target) return null
+    if (target.deletedAt) {
+      return [
+        { id: 'restore', label: 'Recuperar', onSelect: () => restore(target.id) },
+        { type: 'separator' },
+        { id: 'delete-forever', label: 'Apagar permanentemente', danger: true, onSelect: () => deleteNoteById(target.id) },
+      ]
+    }
+    return [
+      {
+        id: 'pin',
+        label: target.pinned ? 'Desafixar' : 'Fixar',
+        onSelect: () => updateNote(target.id, { pinned: !target.pinned }),
+      },
+      {
+        id: 'move',
+        label: 'Mover para…',
+        submenu: data.folders.map((f) => ({
+          id: f.id,
+          label: f.name,
+          active: f.id === target.folderId,
+          disabled: f.id === target.folderId,
+          onSelect: () => moveNoteTo(target.id, f.id),
+        })),
+      },
+      { id: 'duplicate', label: 'Duplicar', onSelect: () => duplicate(target.id) },
+      { type: 'separator' },
+      { id: 'delete', label: 'Apagar', danger: true, onSelect: () => deleteNoteById(target.id) },
+    ]
+  }, [contextMenu, data, sortBy, restore, deleteNoteById, updateNote, moveNoteTo, duplicate])
 
   // atalhos globais (app + navegação VS Code)
   useEffect(() => {
     const onKey = (e) => {
       if (e.getModifierState?.('AltGraph')) return
-      if (showUpdateModal(update) || news || renaming) return
+      if (showUpdateModal(update) || news || renaming || contextMenu) return
 
       const mod = e.ctrlKey || e.metaKey
       const k = e.key.toLowerCase()
@@ -829,7 +962,7 @@ export default function App() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [update, news, renaming, palette, findOpen, sidebarOpen, folderId, newNote, newFolder, openFind, focusSidebar, stepHistory, stepNoteInList, applyZoom])
+  }, [update, news, renaming, contextMenu, palette, findOpen, sidebarOpen, folderId, newNote, newFolder, openFind, focusSidebar, stepHistory, stepNoteInList, applyZoom])
 
   if (!data) return null
 
@@ -916,37 +1049,67 @@ export default function App() {
     </div>
   )
 
-  const folderRow = (f, removable, icon = 'folder') => (
-    <div
-      key={f.id}
-      className={`folder ${folderId === f.id ? 'sel' : ''}`}
-      onClick={() => setFolderId(f.id)}
-      onDoubleClick={() => f.id !== ALL && f.id !== TRASH && setRenaming(f.id)}
-    >
-      <Icon name={icon} size={17} />
-      {renaming === f.id ? (
-        <input
-          autoFocus
-          defaultValue={f.name}
-          onFocus={(e) => e.target.select()}
-          onBlur={(e) => {
-            const name = e.target.value.trim() || f.name
-            setData((d) => ({ ...d, folders: d.folders.map((x) => (x.id === f.id ? { ...x, name } : x)) }))
-            setRenaming(null)
-          }}
-          onKeyDown={(e) => (e.key === 'Enter' || e.key === 'Escape') && e.target.blur()}
-        />
-      ) : (
-        <span className="name">{f.name}</span>
-      )}
-      {removable && (
-        <button className="folder-del" title="Apagar pasta" onClick={(e) => (e.stopPropagation(), deleteFolder(f))}>
-          <Icon name="trash" size={14} />
-        </button>
-      )}
-      <span className="count">{count(f.id)}</span>
-    </div>
-  )
+  const draggingNote = dragNoteId ? data.notes.find((n) => n.id === dragNoteId) : null
+  const canDropOnFolder = (id) => {
+    if (!draggingNote || draggingNote.deletedAt || id === ALL) return false
+    if (id === TRASH) return true
+    return draggingNote.folderId !== id
+  }
+
+  const folderRow = (f, removable, icon = 'folder') => {
+    const canDrop = canDropOnFolder(f.id)
+    return (
+      <div
+        key={f.id}
+        className={`folder ${folderId === f.id ? 'sel' : ''} ${dropFolderId === f.id ? 'drop-target' : ''}`}
+        onClick={() => setFolderId(f.id)}
+        onDoubleClick={() => f.id !== ALL && f.id !== TRASH && setRenaming(f.id)}
+        onDragOver={(e) => {
+          if (!canDrop) return
+          e.preventDefault()
+          e.dataTransfer.dropEffect = 'move'
+          if (dropFolderId !== f.id) setDropFolderId(f.id)
+        }}
+        onDragLeave={(e) => {
+          // Só tira o destaque quando o cursor sai de verdade da pasta (e não ao passar sobre ícone/texto interno).
+          if (!e.currentTarget.contains(e.relatedTarget) && dropFolderId === f.id) setDropFolderId(null)
+        }}
+        onDrop={(e) => {
+          if (!canDrop) return
+          e.preventDefault()
+          const id = e.dataTransfer.getData('application/x-notas-note-id') || dragNoteId
+          setDropFolderId(null)
+          setDragNoteId(null)
+          if (!id) return
+          if (f.id === TRASH) deleteNoteById(id)
+          else moveNoteTo(id, f.id)
+        }}
+      >
+        <Icon name={icon} size={17} />
+        {renaming === f.id ? (
+          <input
+            autoFocus
+            defaultValue={f.name}
+            onFocus={(e) => e.target.select()}
+            onBlur={(e) => {
+              const name = e.target.value.trim() || f.name
+              setData((d) => ({ ...d, folders: d.folders.map((x) => (x.id === f.id ? { ...x, name } : x)) }))
+              setRenaming(null)
+            }}
+            onKeyDown={(e) => (e.key === 'Enter' || e.key === 'Escape') && e.target.blur()}
+          />
+        ) : (
+          <span className="name">{f.name}</span>
+        )}
+        {removable && (
+          <button className="folder-del" title="Apagar pasta" onClick={(e) => (e.stopPropagation(), deleteFolder(f))}>
+            <Icon name="trash" size={14} />
+          </button>
+        )}
+        <span className="count">{count(f.id)}</span>
+      </div>
+    )
+  }
 
   return (
     <div className={`app ${sidebarOpen ? '' : 'no-sidebar'}`} style={{ '--editor-scale': editorScale }}>
@@ -983,6 +1146,19 @@ export default function App() {
             <button className="tool" title="Mostrar/ocultar pastas (Ctrl+\)" onClick={() => setSidebarOpen(!sidebarOpen)}>
               <Icon name="sidebar" />
             </button>
+            <button
+              className={`tool ${contextMenu?.type === 'sort' ? 'on' : ''}`}
+              title={`Ordenar por: ${SORT_OPTIONS.find((o) => o.id === sortBy)?.label}`}
+              disabled={inTrashFolder}
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                if (contextMenu?.type === 'sort') return setContextMenu(null)
+                const r = e.currentTarget.getBoundingClientRect()
+                setContextMenu({ type: 'sort', x: r.left, y: r.bottom + 4 })
+              }}
+            >
+              <Icon name="sort" size={16} />
+            </button>
           </div>
           {noteActions}
         </header>
@@ -1003,10 +1179,36 @@ export default function App() {
                 </div>
               )}
               {notes.map((n) => (
-                <div key={n.id} data-flip={n.id} className={`note-item ${n.id === noteId ? 'sel' : ''}`} onClick={() => selectNote(n.id)}>
+                <div
+                  key={n.id}
+                  data-flip={n.id}
+                  draggable={!n.deletedAt}
+                  className={`note-item ${n.id === noteId ? 'sel' : ''} ${dragNoteId === n.id ? 'dragging' : ''} ${
+                    contextMenu?.type === 'note' && contextMenu.noteId === n.id ? 'context-target' : ''
+                  }`}
+                  onClick={() => selectNote(n.id)}
+                  onContextMenu={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    setContextMenu({ type: 'note', noteId: n.id, x: e.clientX, y: e.clientY })
+                  }}
+                  onDragStart={(e) => {
+                    if (n.deletedAt) return
+                    setContextMenu(null)
+                    e.dataTransfer.effectAllowed = 'move'
+                    e.dataTransfer.setData('application/x-notas-note-id', n.id)
+                    setDragNoteId(n.id)
+                  }}
+                  onDragEnd={() => {
+                    setDragNoteId(null)
+                    setDropFolderId(null)
+                  }}
+                >
                   <div className="note-title">{titleOf(n)}</div>
                   <div className="note-sub">
-                    <span className="note-time">{n.deletedAt ? `${daysLeft(n)} ${daysLeft(n) === 1 ? 'dia' : 'dias'}` : shortDate(n.updatedAt)}</span>
+                    <span className="note-time">
+                      {n.deletedAt ? `${daysLeft(n)} ${daysLeft(n) === 1 ? 'dia' : 'dias'}` : shortDate(sortBy === 'createdAt' ? n.createdAt : n.updatedAt)}
+                    </span>
                     <span className="note-preview">{previewOf(n)}</span>
                   </div>
                   {folderId === ALL && data.folders.length > 1 && (
@@ -1044,6 +1246,16 @@ export default function App() {
         {chord === 'ctrl-k' && <div className="editor-toast">Ctrl+K pressionado — aguarde Ctrl+D para pular ocorrência</div>}
         {zoomNotice && <div className="editor-toast">{zoomNotice}</div>}
       </main>
+
+      {contextMenu && contextMenuItems && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          items={contextMenuItems}
+          ariaLabel={contextMenu.type === 'sort' ? 'Ordenar notas' : 'Ações da nota'}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
 
       {palette && (
         <PaletteModal

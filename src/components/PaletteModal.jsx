@@ -40,21 +40,13 @@ export function PaletteModal({ mode, query, onQueryChange, items, onClose }) {
     }
   }
 
+  const ariaLabel = mode === 'quickOpen' ? 'Ir para nota' : mode === 'moveNote' ? 'Mover nota para pasta' : 'Paleta de comandos'
+  const placeholder = mode === 'quickOpen' ? 'Ir para nota…' : mode === 'moveNote' ? 'Mover nota para pasta…' : 'Digite um comando…'
+
   return (
     <div className="palette-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div
-        className="palette-modal"
-        role="dialog"
-        aria-label={mode === 'quickOpen' ? 'Ir para nota' : 'Paleta de comandos'}
-        onKeyDown={onKeyDown}
-      >
-        <input
-          ref={inputRef}
-          className="palette-input"
-          placeholder={mode === 'quickOpen' ? 'Ir para nota…' : 'Digite um comando…'}
-          value={query}
-          onChange={(e) => onQueryChange(e.target.value)}
-        />
+      <div className="palette-modal" role="dialog" aria-label={ariaLabel} onKeyDown={onKeyDown}>
+        <input ref={inputRef} className="palette-input" placeholder={placeholder} value={query} onChange={(e) => onQueryChange(e.target.value)} />
         <div className="palette-list" ref={listRef}>
           {items.map((item, i) => (
             <button

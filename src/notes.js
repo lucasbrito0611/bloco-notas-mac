@@ -77,22 +77,58 @@ export function groupOf(note, now = Date.now()) {
   return 'Mais Antigas'
 }
 
-// ---------- listas ----------
+// ---------- listas e ordenação ----------
+
+export const SORT_OPTIONS = [
+  { id: 'updatedAt', label: 'Data de edição' },
+  { id: 'createdAt', label: 'Data de criação' },
+  { id: 'title', label: 'Título' },
+]
+
+export const DEFAULT_SORT = 'updatedAt'
+export const isValidSort = (s) => SORT_OPTIONS.some((o) => o.id === s)
+
+// Collator em português ignora acentos/maiúsculas e ordena números naturalmente ("Nota 2" antes de "Nota 10").
+const titleCollator = new Intl.Collator('pt-BR', { sensitivity: 'base', numeric: true })
+
+export function compareNotes(a, b, sortBy = DEFAULT_SORT) {
+  const pinDiff = Number(Boolean(b.pinned)) - Number(Boolean(a.pinned))
+  if (pinDiff !== 0) return pinDiff
+  if (sortBy === 'createdAt') return (b.createdAt || 0) - (a.createdAt || 0) || (b.updatedAt || 0) - (a.updatedAt || 0)
+  if (sortBy === 'title') {
+    const cmp = titleCollator.compare(titleOf(a), titleOf(b))
+    return cmp !== 0 ? cmp : (b.updatedAt || 0) - (a.updatedAt || 0)
+  }
+  return (b.updatedAt || 0) - (a.updatedAt || 0)
+}
+
+export const sortNotes = (notes, sortBy = DEFAULT_SORT) => [...notes].sort((a, b) => compareNotes(a, b, sortBy))
 
 const isDeleted = (n) => Boolean(n.deletedAt)
 
 // A lixeira é uma "pasta" virtual: notas apagadas só aparecem nela, e em nenhum outro lugar.
-export function filterNotes(notes, { folderId = ALL, query = '' } = {}) {
+export function filterNotes(notes, { folderId = ALL, query = '', sortBy = DEFAULT_SORT } = {}) {
   const q = normalize(query.trim())
-  return notes
+  const filtered = notes
     .filter((n) => (folderId === TRASH ? isDeleted(n) : !isDeleted(n) && (folderId === ALL || n.folderId === folderId)))
     .filter((n) => !q || normalize(n.text).includes(q))
-    .sort((a, b) => (folderId === TRASH ? b.deletedAt - a.deletedAt : b.updatedAt - a.updatedAt))
+  return folderId === TRASH ? filtered.sort((a, b) => b.deletedAt - a.deletedAt) : sortNotes(filtered, sortBy)
 }
 
 export const countNotes = (notes, folderId) => filterNotes(notes, { folderId }).length
 
-export function groupNotes(notes, now = Date.now()) {
+export function groupNotes(notes, now = Date.now(), sortBy = DEFAULT_SORT) {
+  // Grupos por data (Hoje, Ontem...) só fazem sentido na ordenação por data de edição.
+  // Nas outras ordenações (criação e título), fixadas ficam no topo e o resto segue em lista contínua.
+  if (sortBy !== 'updatedAt') {
+    if (notes.every(isDeleted)) return notes.length ? [['', notes]] : []
+    const pinned = notes.filter((n) => !isDeleted(n) && n.pinned)
+    const rest = notes.filter((n) => !isDeleted(n) && !n.pinned)
+    const groups = []
+    if (pinned.length) groups.push(['Fixadas', pinned])
+    if (rest.length) groups.push([pinned.length ? 'Notas' : '', rest])
+    return groups
+  }
   const map = new Map()
   for (const n of notes) {
     const g = isDeleted(n) ? '' : groupOf(n, now)
@@ -101,6 +137,33 @@ export function groupNotes(notes, now = Date.now()) {
   }
   // Na lixeira não há grupos por data: tudo fica num grupo sem título.
   return ['', ...GROUP_ORDER].filter((g) => map.has(g)).map((g) => [g, map.get(g)])
+}
+
+// ---------- mover e duplicar ----------
+
+// Move uma nota ativa para outra pasta existente, sem alterar a data de edição.
+export function moveNote(data, id, targetFolderId) {
+  const note = data.notes.find((n) => n.id === id)
+  if (!note || isDeleted(note) || note.folderId === targetFolderId) return data
+  if (!data.folders.some((f) => f.id === targetFolderId)) return data
+  return patchNote(data, id, { folderId: targetFolderId })
+}
+
+// Cria uma cópia da nota na mesma pasta com novo id e datas atuais.
+// Anexos e imagens são apenas endereços notas://anexos/..., então nada precisa ser copiado no disco.
+export function duplicateNote(data, id, now = Date.now(), newId = uid()) {
+  const source = data.notes.find((n) => n.id === id)
+  if (!source || isDeleted(source)) return { data, note: null }
+  const copy = {
+    id: newId,
+    folderId: source.folderId,
+    pinned: false,
+    createdAt: now,
+    updatedAt: now,
+    html: source.html,
+    text: source.text,
+  }
+  return { data: { ...data, notes: [...data.notes, copy] }, note: copy }
 }
 
 // ---------- lixeira ("Apagadas Recentemente") ----------

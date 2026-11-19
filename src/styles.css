@@ -1,6 +1,9 @@
 :root {
   --accent: #e3a700;
   --accent-soft: rgba(255, 199, 0, 0.32);
+  --accent-text: #000000;
+  --danger: #e5484d;
+  --danger-text: #ffffff;
   --text: #1d1d1f;
   --text-2: #6e6e73;
   --text-3: #a1a1a6;
@@ -14,6 +17,7 @@
   --note-sel: rgba(0, 0, 0, 0.08);
   --popover-bg: #ffffff;
   --search-bg: rgba(0, 0, 0, 0.06);
+  --menu-shadow: 0 12px 32px rgba(0, 0, 0, 0.18), 0 2px 6px rgba(0, 0, 0, 0.08);
   color-scheme: light;
 
   /* movimento: curva que desacelera no fim, como no macOS (os mesmos valores estão em src/motion.js) */
@@ -26,6 +30,9 @@
   :root {
     --accent: #ffcc00;
     --accent-soft: rgba(255, 199, 0, 0.22);
+    --accent-text: #000000;
+    --danger: #ff6166;
+    --danger-text: #ffffff;
     --text: #f2f2f7;
     --text-2: #9b9ba1;
     --text-3: #6c6c70;
@@ -38,6 +45,7 @@
     --note-sel: rgba(255, 255, 255, 0.13);
     --popover-bg: #2c2c2e;
     --search-bg: rgba(255, 255, 255, 0.08);
+    --menu-shadow: 0 14px 36px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.28);
     color-scheme: dark;
   }
 }
@@ -727,3 +735,90 @@ input { font: inherit; color: inherit; }
 
 ::-webkit-scrollbar { width: 10px; }
 ::-webkit-scrollbar-thumb { background: var(--line); border-radius: 5px; border: 3px solid transparent; background-clip: content-box; }
+
+/* ---------- arrastar nota para pasta ---------- */
+
+.folder { transition: background-color var(--motion-fast) ease-out, color var(--motion-fast) ease-out, box-shadow var(--motion-fast) ease-out; }
+.folder.drop-target {
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1.5px var(--accent);
+}
+.note-item.dragging { opacity: 0.45; }
+.note-item.context-target:not(.sel) {
+  background: var(--hover);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+/* ---------- menu de contexto e ordenação ---------- */
+
+.context-menu {
+  position: fixed;
+  z-index: 80;
+  min-width: 184px;
+  max-width: 260px;
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+  padding: 5px;
+  background: var(--popover-bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: var(--menu-shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  outline: none;
+  -webkit-app-region: no-drag;
+  transform-origin: top left;
+  animation: pop-in var(--motion-fast) var(--ease);
+}
+.context-submenu {
+  z-index: 81;
+}
+.context-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 6px 10px;
+  border-radius: 6px;
+  text-align: left;
+  font-size: 13px;
+  color: var(--text);
+  transition: background-color var(--motion-fast) var(--ease), color var(--motion-fast) var(--ease);
+}
+.context-menu.has-checks .context-item { padding-left: 26px; }
+.context-item.checked::before {
+  content: '✓';
+  position: absolute;
+  left: 10px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.context-item.active:not(:disabled) {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+.context-item.danger { color: var(--danger); }
+.context-item.danger.active:not(:disabled) {
+  background: var(--danger);
+  color: var(--danger-text);
+}
+.context-item:disabled {
+  color: var(--text-3);
+}
+.context-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.context-chevron {
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+.context-sep {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--line);
+}

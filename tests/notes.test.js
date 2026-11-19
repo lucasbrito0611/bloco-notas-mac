@@ -2,14 +2,20 @@ import { describe, it, expect } from 'vitest'
 import {
   ALL,
   DEFAULT_FOLDER,
+  DEFAULT_SORT,
+  SORT_OPTIONS,
+  isValidSort,
   titleOf,
   previewOf,
   isBlank,
   normalize,
   shortDate,
   groupOf,
+  sortNotes,
   filterNotes,
   groupNotes,
+  moveNote,
+  duplicateNote,
   removeFolder,
   formatSize,
   initialData,
@@ -279,5 +285,124 @@ describe('navegação rápida (Ctrl+P) e histórico (Alt+← / Alt+→)', () => 
     // Abrir "d" a partir de "a" descarta o futuro antigo
     const branched = pushNavHistory(back.history, 'd')
     expect(branched).toEqual({ stack: ['a', 'd'], index: 1 })
+  })
+})
+
+describe('mover e duplicar nota', () => {
+  const base = () => ({
+    folders: [
+      { id: DEFAULT_FOLDER, name: 'Notas' },
+      { id: 'trabalho', name: 'Trabalho' },
+    ],
+    notes: [
+      note({
+        id: 'a',
+        folderId: DEFAULT_FOLDER,
+        pinned: true,
+        createdAt: NOW - 5 * DAY,
+        updatedAt: NOW - 2 * DAY,
+        html: '<p>Relatório</p><img src="notas://anexos/ab12cd34-grafico.png">',
+        text: 'Relatório\nResumo mensal',
+      }),
+      note({ id: 'lixo', folderId: DEFAULT_FOLDER, deletedAt: NOW - DAY, text: 'Apagada' }),
+    ],
+  })
+
+  it('move a nota para outra pasta existente sem mexer na data de edição nem no fixar', () => {
+    const data = base()
+    const next = moveNote(data, 'a', 'trabalho')
+    const moved = next.notes.find((n) => n.id === 'a')
+    expect(moved.folderId).toBe('trabalho')
+    expect(moved.updatedAt).toBe(NOW - 2 * DAY)
+    expect(moved.pinned).toBe(true)
+    expect(filterNotes(next.notes, { folderId: 'trabalho' }).map((n) => n.id)).toEqual(['a'])
+    expect(filterNotes(next.notes, { folderId: DEFAULT_FOLDER })).toHaveLength(0)
+  })
+
+  it('ignora mover para a mesma pasta, pasta inexistente, virtual (ALL/TRASH) ou nota no lixo', () => {
+    const data = base()
+    expect(moveNote(data, 'a', DEFAULT_FOLDER)).toBe(data)
+    expect(moveNote(data, 'a', 'inexistente')).toBe(data)
+    expect(moveNote(data, 'a', ALL)).toBe(data)
+    expect(moveNote(data, 'a', TRASH)).toBe(data)
+    expect(moveNote(data, 'lixo', 'trabalho')).toBe(data)
+    expect(moveNote(data, 'desconhecida', 'trabalho')).toBe(data)
+  })
+
+  it('duplica nota com novo id, mesma pasta, conteúdo e anexos preservados, datas novas e sem fixar', () => {
+    const data = base()
+    const { data: next, note: copy } = duplicateNote(data, 'a', NOW, 'copia-1')
+    expect(copy).not.toBeNull()
+    expect(copy.id).toBe('copia-1')
+    expect(copy.folderId).toBe(DEFAULT_FOLDER)
+    expect(copy.text).toBe('Relatório\nResumo mensal')
+    expect(copy.html).toBe('<p>Relatório</p><img src="notas://anexos/ab12cd34-grafico.png">')
+    expect(copy.createdAt).toBe(NOW)
+    expect(copy.updatedAt).toBe(NOW)
+    expect(copy.pinned).toBe(false)
+    // A nota original permanece intacta e os anexos continuam apontando para o mesmo endereço.
+    expect(next.notes.find((n) => n.id === 'a').updatedAt).toBe(NOW - 2 * DAY)
+    expect(attachmentUrls(next.notes)).toEqual(['notas://anexos/ab12cd34-grafico.png'])
+  })
+
+  it('não duplica nota inexistente nem nota na lixeira', () => {
+    const data = base()
+    expect(duplicateNote(data, 'lixo', NOW, 'x')).toEqual({ data, note: null })
+    expect(duplicateNote(data, 'sumiu', NOW, 'x')).toEqual({ data, note: null })
+  })
+})
+
+describe('ordenação da lista e grupos', () => {
+  const sample = () => [
+    note({ id: 'pin-z', pinned: true, text: 'Zebra', createdAt: NOW - 10 * DAY, updatedAt: NOW - 8 * DAY }),
+    note({ id: 'pin-a', pinned: true, text: 'Água', createdAt: NOW - 3 * DAY, updatedAt: NOW - 9 * DAY }),
+    note({ id: 'n10', text: 'Nota 10', createdAt: NOW - 1 * DAY, updatedAt: NOW - 5 * DAY }),
+    note({ id: 'n2', text: 'nota 2', createdAt: NOW - 4 * DAY, updatedAt: NOW }),
+    note({ id: 'cafe', text: 'Café', createdAt: NOW - 2 * DAY, updatedAt: NOW - 3 * DAY }),
+  ]
+
+  it('valida opções de ordenação conhecidas', () => {
+    expect(SORT_OPTIONS.map((o) => o.id)).toEqual(['updatedAt', 'createdAt', 'title'])
+    expect(isValidSort(DEFAULT_SORT)).toBe(true)
+    expect(isValidSort('createdAt')).toBe(true)
+    expect(isValidSort('title')).toBe(true)
+    expect(isValidSort('invalida')).toBe(false)
+    expect(isValidSort(null)).toBe(false)
+  })
+
+  it('mantém fixadas no topo em todas as ordenações', () => {
+    const notes = sample()
+    expect(sortNotes(notes, 'updatedAt').map((n) => n.id)).toEqual(['pin-z', 'pin-a', 'n2', 'cafe', 'n10'])
+    expect(sortNotes(notes, 'createdAt').map((n) => n.id)).toEqual(['pin-a', 'pin-z', 'n10', 'cafe', 'n2'])
+    expect(sortNotes(notes, 'title').map((n) => n.id)).toEqual(['pin-a', 'pin-z', 'cafe', 'n2', 'n10'])
+  })
+
+  it('usa grupos por data apenas na ordenação por data de edição', () => {
+    const notes = filterNotes(sample(), { sortBy: 'updatedAt' })
+    expect(groupNotes(notes, NOW, 'updatedAt').map(([g]) => g)).toEqual(['Fixadas', 'Hoje', '7 Dias Anteriores'])
+
+    // Em criação e título: separa Fixadas de Notas quando existem fixadas.
+    const byCreated = filterNotes(sample(), { sortBy: 'createdAt' })
+    expect(groupNotes(byCreated, NOW, 'createdAt').map(([g]) => g)).toEqual(['Fixadas', 'Notas'])
+
+    const byTitle = filterNotes(sample(), { sortBy: 'title' })
+    expect(groupNotes(byTitle, NOW, 'title').map(([g]) => g)).toEqual(['Fixadas', 'Notas'])
+
+    // Sem fixadas, não cria cabeçalho redundante.
+    const noPins = filterNotes(
+      sample().filter((n) => !n.pinned),
+      { sortBy: 'title' },
+    )
+    expect(groupNotes(noPins, NOW, 'title').map(([g]) => g)).toEqual([''])
+  })
+
+  it('na lixeira, ignora a ordenação escolhida e mantém ordem por data de exclusão sem cabeçalho', () => {
+    const trashed = [
+      note({ id: 't1', text: 'Alfa', deletedAt: NOW - 5 * DAY, createdAt: NOW }),
+      note({ id: 't2', text: 'Zeta', deletedAt: NOW - DAY, createdAt: NOW - 10 * DAY }),
+    ]
+    const filtered = filterNotes(trashed, { folderId: TRASH, sortBy: 'title' })
+    expect(filtered.map((n) => n.id)).toEqual(['t2', 't1'])
+    expect(groupNotes(filtered, NOW, 'title')).toEqual([['', filtered]])
   })
 })
