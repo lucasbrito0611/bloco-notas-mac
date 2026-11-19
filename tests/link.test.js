@@ -7,8 +7,7 @@ import { safeLinkHref, linkableHrefOf, shouldOpenLinkOnClick, linkOptions } from
 import { isBlank, titleOf, previewOf } from '../src/notes.js'
 
 let editor
-const create = (content = '', extra = {}) =>
-  (editor = new Editor({ extensions: buildExtensions({ onFiles: () => {} }), content, ...extra }))
+const create = (content = '') => (editor = new Editor({ extensions: buildExtensions({ onFiles: () => {} }), content }))
 
 afterEach(() => {
   editor?.destroy()
@@ -26,22 +25,33 @@ const paste = (str) => {
 const type = (str) => editor.commands.insertContent(str)
 
 const anchors = () => [...editor.view.dom.querySelectorAll('a')]
+
+// Clique simples no link: o evento de clique do DOM. Devolve false se o navegador foi impedido de navegar.
 const click = (el, init = {}) =>
   el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0, ...init }))
+
+// Ctrl+clique: o ProseMirror chama handleClick no mouseup (antes do evento click).
+// O handleClick do plugin é o que de fato abre o link.
+const ctrlClick = (el, init = {}) => {
+  const evt = new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0, ctrlKey: true, ...init })
+  el.dispatchEvent(evt)
+  return editor.view.someProp('handleClick', (fn) => fn(editor.view, 1, evt))
+}
 
 describe('protocolos permitidos', () => {
   it('aceita http, https e mailto', () => {
     expect(safeLinkHref('https://exemplo.com/a?b=1')).toBe('https://exemplo.com/a?b=1')
-    expect(safeLinkHref('http://exemplo.com')).toBe('http://exemplo.com')
+    expect(safeLinkHref('http://exemplo.com')).toBe('http://exemplo.com/')
     expect(safeLinkHref('mailto:ana@exemplo.com')).toBe('mailto:ana@exemplo.com')
-    expect(safeLinkHref('  https://exemplo.com  ')).toBe('https://exemplo.com')
+    expect(safeLinkHref('  https://exemplo.com  ')).toBe('https://exemplo.com/')
   })
 
-  it('recusa javascript:, file:, data: e relativas', () => {
+  it('recusa javascript:, file:, data: e relativas, inclusive com controles escondidos', () => {
     for (const url of [
       'javascript:alert(1)',
       'JavaScript:alert(1)',
       'java\tscript:alert(1)',
+      '\u0001javascript:alert(1)+\'@x.y#',
       'file:///C:/Windows/system32/calc.exe',
       'data:text/html,<script>alert(1)</script>',
       'ftp://exemplo.com',
@@ -50,70 +60,106 @@ describe('protocolos permitidos', () => {
       null,
       undefined,
     ]) {
-      expect(safeLinkHref(url), url).toBeNull()
+      expect(safeLinkHref(url), JSON.stringify(url)).toBeNull()
     }
   })
 
   it('o autolink só cria link a partir de protocolo seguro', () => {
     expect(linkableHrefOf('www.exemplo.com')).toBe('http://www.exemplo.com')
     expect(linkableHrefOf('exemplo.com:8080')).toBe('http://exemplo.com:8080')
+    expect(linkableHrefOf('ana@exemplo.com')).toBe('http://ana@exemplo.com')
     expect(linkOptions.shouldAutoLink('www.exemplo.com')).toBe(true)
     expect(linkOptions.shouldAutoLink('javascript:alert(1)')).toBe(false)
     expect(linkOptions.shouldAutoLink('file:///C:/x')).toBe(false)
     expect(linkOptions.shouldAutoLink('/pasta')).toBe(false)
   })
 
-  it('isAllowedUri (usado ao criar, ler e desenhar o link) segue a mesma regra', () => {
+  it('o texto com controle antes do host não ganha http:// (o prefixo não muda o que é validado)', () => {
+    expect(linkableHrefOf('\u0001javascript:alert(1)+\'@x.y#')).toBe('\u0001javascript:alert(1)+\'@x.y#')
+    expect(linkableHrefOf('java\tscript:x.com')).toBe('java\tscript:x.com')
+  })
+
+  it('isAllowedUri (criar, ler e desenhar o link) recusa o que o autolink recusa', () => {
     expect(linkOptions.isAllowedUri('https://exemplo.com')).toBe(true)
     expect(linkOptions.isAllowedUri('www.exemplo.com')).toBe(true)
     expect(linkOptions.isAllowedUri('javascript:alert(1)')).toBe(false)
+    expect(linkOptions.isAllowedUri('\u0001javascript:alert(1)+\'@x.y#')).toBe(false)
     expect(linkOptions.isAllowedUri('/pasta')).toBe(false)
     expect(linkOptions.isAllowedUri('')).toBe(false)
   })
 })
 
-describe('Ctrl+clique', () => {
-  it('só abre com Ctrl e botão esquerdo, sem Alt (AltGr) nem Shift', () => {
+describe('clique em link', () => {
+  it('só Ctrl e botão esquerdo contam, sem Alt (AltGr) nem Shift', () => {
     expect(shouldOpenLinkOnClick({ button: 0, ctrlKey: true, altKey: false, shiftKey: false })).toBe(true)
     expect(shouldOpenLinkOnClick({ button: 0, ctrlKey: false })).toBe(false)
     expect(shouldOpenLinkOnClick({ button: 0, ctrlKey: true, altKey: true })).toBe(false)
     expect(shouldOpenLinkOnClick({ button: 2, ctrlKey: true })).toBe(false)
   })
 
-  it('Ctrl+clique abre o link no navegador, sem target', () => {
+  it('Ctrl+clique abre o link no navegador, sempre em _blank', () => {
     const open = vi.spyOn(window, 'open').mockImplementation(() => null)
     create('<p><a href="https://exemplo.com">site</a></p>')
-    click(anchors()[0], { ctrlKey: true })
-    expect(open).toHaveBeenCalledWith('https://exemplo.com', '_blank')
+    expect(ctrlClick(anchors()[0])).toBe(true)
+    expect(open).toHaveBeenCalledWith('https://exemplo.com/', '_blank')
   })
 
-  it('clique simples não abre o link', () => {
-    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
-    create('<p><a href="https://exemplo.com">site</a></p>')
-    click(anchors()[0])
-    expect(open).not.toHaveBeenCalled()
-  })
-
-  it('ignora o target do HTML: abre em _blank pelo app, nunca navega a janela', () => {
+  it('ignora o target do HTML: o link abre pelo app, nunca navega a janela', () => {
     const open = vi.spyOn(window, 'open').mockImplementation(() => null)
     create('<p><a href="https://exemplo.com" target="_self">site</a></p>')
-    click(anchors()[0], { ctrlKey: true })
-    expect(open).toHaveBeenCalledWith('https://exemplo.com', '_blank')
+    ctrlClick(anchors()[0])
+    expect(open).toHaveBeenCalledWith('https://exemplo.com/', '_blank')
   })
 
-  it('Ctrl+clique num link com protocolo proibido não abre nada', () => {
+  it('Ctrl+clique devolve true, então o ProseMirror não seleciona o parágrafo', () => {
+    vi.spyOn(window, 'open').mockImplementation(() => null)
+    create('<p>texto <a href="https://exemplo.com">site</a> fim</p>')
+    const evt = new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0, ctrlKey: true })
+    anchors()[0].dispatchEvent(evt)
+    expect(editor.view.someProp('handleClick', (fn) => fn(editor.view, 1, evt))).toBe(true)
+    expect(evt.defaultPrevented).toBe(true)
+  })
+
+  it('Ctrl+clique fora de link não abre nada e não é tratado', () => {
     const open = vi.spyOn(window, 'open').mockImplementation(() => null)
-    create('<p><a href="javascript:alert(1)">mal</a></p>')
-    expect(anchors()).toHaveLength(0) // o link nem chega ao editor
+    create('<p>sem link aqui</p>')
+    const evt = new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0, ctrlKey: true })
+    editor.view.dom.querySelector('p').dispatchEvent(evt)
+    expect(editor.view.someProp('handleClick', (fn) => fn(editor.view, 1, evt))).toBeFalsy()
     expect(open).not.toHaveBeenCalled()
   })
 
-  it('funciona na nota somente leitura (lixeira)', () => {
+  it('clique simples não abre o link e impede a navegação da janela', () => {
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
+    create('<p><a href="https://exemplo.com">site</a></p>')
+    const notPrevented = click(anchors()[0])
+    expect(notPrevented).toBe(false) // false = o navegador foi impedido de seguir o link
+    expect(open).not.toHaveBeenCalled()
+  })
+
+  it('funciona na nota somente leitura (lixeira): Ctrl abre e clique simples não navega', () => {
     const open = vi.spyOn(window, 'open').mockImplementation(() => null)
     create('<p><a href="https://exemplo.com">site</a></p>')
     editor.setEditable(false, false)
-    click(anchors()[0], { ctrlKey: true })
-    expect(open).toHaveBeenCalledWith('https://exemplo.com', '_blank')
+    expect(click(anchors()[0])).toBe(false)
+    expect(open).not.toHaveBeenCalled()
+    ctrlClick(anchors()[0])
+    expect(open).toHaveBeenCalledWith('https://exemplo.com/', '_blank')
+  })
+
+  it('botão do meio num link também não navega nem abre', () => {
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
+    create('<p><a href="https://exemplo.com">site</a></p>')
+    const evt = new MouseEvent('auxclick', { bubbles: true, cancelable: true, button: 1 })
+    expect(anchors()[0].dispatchEvent(evt)).toBe(false)
+    expect(open).not.toHaveBeenCalled()
+  })
+
+  it('Ctrl+clique num link com protocolo proibido não abre e nem chega ao editor', () => {
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
+    create('<p><a href="javascript:alert(1)">mal</a></p>')
+    expect(anchors()).toHaveLength(0)
+    expect(open).not.toHaveBeenCalled()
   })
 
   it('marca o editor com data-ctrl enquanto o Ctrl está apertado', () => {
@@ -157,10 +203,6 @@ describe('criação de links', () => {
     create('<p></p>')
     type('veja /pasta/arquivo ')
     expect(editor.getHTML()).not.toContain('<a')
-  })
-
-  it('texto com protocolo proibido não vira link', () => {
-    create('<p></p>')
     type('rode javascript:alert(1) ')
     expect(editor.getHTML()).not.toContain('<a')
   })
@@ -184,6 +226,11 @@ describe('HTML guardado e texto da nota', () => {
     editor.destroy()
     create(saved)
     expect(editor.getHTML()).toBe(saved)
+  })
+
+  it('href com controle escondido não sobrevive ao HTML salvo', () => {
+    create('<p><a href="\u0001javascript:alert(1)">x</a> ok</p>')
+    expect(editor.getHTML()).not.toContain('javascript')
   })
 
   it('o texto puro não inclui a URL, então título, prévia e busca seguem o texto visível', () => {
